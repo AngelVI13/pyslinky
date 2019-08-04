@@ -23,3 +23,5 @@ START_POS = [
     *[WPAWN]*ROWS,
     WROOK, WKNIGHT, WBISHOP, WQUEEN, WKING, WBISHOP, WKNIGHT, WROOK,
 ]
+
+RANK_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))

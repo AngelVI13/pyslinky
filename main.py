@@ -15,12 +15,15 @@ class Game:
         self.clock = pygame.time.Clock()
 
         self.square_loc = self.compute_square_locations()
+        self.pos = START_POS
         # --- Images
         # -- Squares
         dark_square = pygame.image.load('assets/square brown dark_png_128px.png')
         light_square = pygame.image.load('assets/square brown light_png_128px.png')
+        highlight_square = pygame.image.load('assets/square gray light _png_128px.png')
         self.dark_square = pygame.transform.scale(dark_square, (SQUARE_SIZE, SQUARE_SIZE))
         self.light_square = pygame.transform.scale(light_square, (SQUARE_SIZE, SQUARE_SIZE))
+        self.highlight_square = pygame.transform.scale(highlight_square , (SQUARE_SIZE, SQUARE_SIZE))
 
         self.piece_images = {}
         # -- Pawns
@@ -79,20 +82,56 @@ class Game:
         self.piece_images[WKING] = self.white_king
 
     def run(self):
+        clicked_square_idx = None
+
         done = False
         while not done:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True
 
+                if event.type == pygame.MOUSEBUTTONUP:
+                    sq_idx = self.get_square_under_mouse(event.pos)
+
+                    if clicked_square_idx is not None and sq_idx != clicked_square_idx:
+                        self.move_piece(clicked_square_idx, sq_idx)
+                        clicked_square_idx = None
+                    else:
+                        clicked_square_idx = sq_idx
+
             self.canvas.fill(pygame.Color('black'))
 
             self.draw_squares()
+            self.draw_clicked_square(clicked_square_idx)  # highlight clicked sq
             self.draw_pos()
 
             pygame.display.flip()
 
             self.clock.tick(10)
+
+    @staticmethod
+    def get_square_under_mouse(coords):
+        width, height = coords
+        width_idx = width // SQUARE_SIZE  # todo might need to add offset or sth here later
+        height_idx = height // SQUARE_SIZE
+        square_idx = height_idx*ROWS + width_idx
+        return square_idx
+
+    def move_piece(self, from_sq, to_sq):
+        print(self.get_move_str(from_sq, to_sq))
+
+        piece_from = self.pos[from_sq]
+        self.pos[from_sq] = EMPTY  # remove piece from square
+        self.pos[to_sq] = piece_from  # put piece in destination
+
+    @classmethod
+    def get_move_str(cls, from_sq, to_sq):
+        return f'{cls.get_sq_str(from_sq)}{cls.get_sq_str(to_sq)}'
+
+    @staticmethod
+    def get_sq_str(sq):
+        row, col = divmod(sq, ROWS)
+        return f'{RANK_CHAR[col]}{ROWS-row}'  # subtraction is needed since index 0 is a8 and not a1
 
     def draw_squares(self):
         for i in range(BOARD_SIZE):
@@ -104,13 +143,13 @@ class Game:
                 self.canvas.blit(self.dark_square, self.square_loc[i])
 
     def draw_pos(self):
-        for idx, piece in enumerate(START_POS):
+        for idx, piece in enumerate(self.pos):
             if piece != EMPTY:
                 self.canvas.blit(self.piece_images[piece], self.square_loc[idx])
 
-    def draw_pawns(self):
-        width, height = self.square_loc[59]
-        self.canvas.blit(self.white_pawn, (width + PAWN_PADDING_LEFT, height + PAWN_PADDING_TOP))
+    def draw_clicked_square(self, sq):
+        if sq is not None:
+            self.canvas.blit(self.highlight_square, self.square_loc[sq])
 
     @staticmethod
     def compute_square_locations():

@@ -16,6 +16,7 @@ class Game:
 
         self.square_loc = self.compute_square_locations()
         self.pos = START_POS
+        self.move_history = []
         # --- Images
         # -- Squares
         dark_square = pygame.image.load('assets/square brown dark_png_128px.png')
@@ -98,6 +99,7 @@ class Game:
                         clicked_square_idx = None
                     else:
                         clicked_square_idx = sq_idx
+                        self.get_allowed_moves(sq_idx)
 
             self.canvas.fill(pygame.Color('black'))
 
@@ -118,11 +120,18 @@ class Game:
         return square_idx
 
     def move_piece(self, from_sq, to_sq):
-        print(self.get_move_str(from_sq, to_sq))
-
         piece_from = self.pos[from_sq]
         self.pos[from_sq] = EMPTY  # remove piece from square
         self.pos[to_sq] = piece_from  # put piece in destination
+
+        # this is used to track evey move since starting position
+        self.move_history.append(self.get_move_str(from_sq, to_sq))
+
+    def get_allowed_moves(self, sq):
+        # todo exec command
+        # todo parse stdin response
+        # todo filter moves that start with square_str
+        pass
 
     @classmethod
     def get_move_str(cls, from_sq, to_sq):

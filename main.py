@@ -33,6 +33,8 @@ class Game:
         # todo are member variables needed ?
         black_pawn = pygame.image.load('assets/b_pawn_png_128px.png')
         white_pawn = pygame.image.load('assets/w_pawn_png_128px.png')
+        # todo move scaling values to dict so that they can be used later
+        # todo to determine the padding from top and bottom needed
         self.black_pawn = pygame.transform.scale(black_pawn, (48, 58))
         self.white_pawn = pygame.transform.scale(white_pawn, (48, 58))
 

@@ -14,7 +14,7 @@ PIECE_RANGE = range(-6, 7, 1)
  WPAWN, WKNIGHT, WBISHOP, WROOK, WQUEEN, WKING) = PIECE_RANGE  # [1;6]
 
 START_POS = [
-    BROOK, BKNIGHT, BBISHOP, BKING, BQUEEN, BBISHOP, BKNIGHT, BROOK,
+    BROOK, BKNIGHT, BBISHOP, BQUEEN, BKING, BBISHOP, BKNIGHT, BROOK,
     *[BPAWN]*ROWS,
     *[EMPTY]*ROWS,
     *[EMPTY]*ROWS,
@@ -24,7 +24,8 @@ START_POS = [
     WROOK, WKNIGHT, WBISHOP, WQUEEN, WKING, WBISHOP, WKNIGHT, WROOK,
 ]
 
-RANK_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
+FILE_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
+FILE_INT = {v: k for k, v in FILE_CHAR.items()}  # inverting above dict so we can get int from char
 
 IMAGE_PATHS = {
     BPAWN: 'assets/b_pawn_png_128px.png',

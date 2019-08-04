@@ -19,6 +19,7 @@ class Game:
         self.square_loc = self.compute_square_locations()
         self.pos = START_POS
         self.move_history = []
+        self.highlighted_moves = []
         # --- Images
         # -- Squares
         dark_square = pygame.image.load('assets/square brown dark_png_128px.png')
@@ -48,19 +49,30 @@ class Game:
 
                 if event.type == pygame.MOUSEBUTTONUP:
                     sq_idx = self.get_square_under_mouse(event.pos)
-                    moves = self.get_allowed_moves(sq_idx)
 
                     if clicked_square_idx is not None and sq_idx != clicked_square_idx:
-                        self.move_piece(clicked_square_idx, sq_idx)
+                        # get all moves where selected piece can move to and check if
+                        # sq_idx is one of them
+                        to_sq_str = self.get_sq_str(sq_idx)
+                        # todo simplify \ make this cleaner
+                        if len(list(filter(lambda move: to_sq_str in move[2:], self.highlighted_moves))) != 0:
+                            self.move_piece(clicked_square_idx, sq_idx)
+                            clicked_square_idx = None
+                            self.highlighted_moves = []
+                    elif clicked_square_idx is not None and sq_idx == clicked_square_idx:
+                        # if clicked on same square disable highlighting
                         clicked_square_idx = None
+                        self.highlighted_moves = []
                     else:
-                        if moves:  # I have allowed moves for this square -> set it as clicked
+                        self.highlighted_moves = self.get_allowed_moves(sq_idx)
+                        if self.highlighted_moves:  # I have allowed moves for this square -> set it as clicked
                             clicked_square_idx = sq_idx
 
             self.canvas.fill(pygame.Color('black'))
 
             self.draw_squares()
             self.draw_clicked_square(clicked_square_idx)  # highlight clicked sq
+            self.draw_highlighted_squares()
             self.draw_pos()
 
             pygame.display.flip()
@@ -97,10 +109,11 @@ class Game:
             # check if sq matches the from part of move notation
             return self.get_sq_str(sq) in move_[:2]
 
-        # todo instead of sending new, start sending what UCI protocol does
-        # todo i.e. position startpos d2d4 (position indicates new position, startpos means start,
-        #  todo d2d4... all moves after start pos)
-        engine = subprocess.run(["slinky.exe", "new, getmoves"], stdout=subprocess.PIPE)
+        command = "position startpos"
+        if self.move_history:
+            command = ' '.join([command, "moves", " ".join(self.move_history)])
+
+        engine = subprocess.run(["slinky.exe", f"{command}, getmoves"], stdout=subprocess.PIPE)
         output = engine.stdout.decode('utf-8')
         moves = self.parse_engine_moves(output)
         moves_for_square = list(filter(is_start_square, moves))
@@ -113,7 +126,7 @@ class Game:
     @staticmethod
     def get_sq_str(sq):
         row, col = divmod(sq, ROWS)
-        return f'{RANK_CHAR[col]}{ROWS-row}'  # subtraction is needed since index 0 is a8 and not a1
+        return f'{FILE_CHAR[col]}{ROWS - row}'  # subtraction is needed since index 0 is a8 and not a1
 
     def draw_squares(self):
         for i in range(BOARD_SIZE):
@@ -134,6 +147,14 @@ class Game:
 
     def draw_clicked_square(self, sq):
         if sq is not None:
+            self.canvas.blit(self.highlight_square, self.square_loc[sq])
+
+    def draw_highlighted_squares(self):
+        for move in self.highlighted_moves:
+            to_sq = move[2:]  # the highlighted square is the destination square
+            file, rank = to_sq
+            file, rank = FILE_INT[file], int(rank)
+            sq = (ROWS - rank)*ROWS + file
             self.canvas.blit(self.highlight_square, self.square_loc[sq])
 
     @staticmethod

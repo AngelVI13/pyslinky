@@ -20,6 +20,7 @@ class Game:
         self.pos = START_POS
         self.move_history = []
         self.highlighted_moves = []
+        self.clicked_square_idx = None
         # --- Images
         # -- Squares
         dark_square = pygame.image.load('assets/square brown dark_png_128px.png')
@@ -27,7 +28,7 @@ class Game:
         highlight_square = pygame.image.load('assets/square gray light _png_128px.png')
         self.dark_square = pygame.transform.scale(dark_square, (SQUARE_SIZE, SQUARE_SIZE))
         self.light_square = pygame.transform.scale(light_square, (SQUARE_SIZE, SQUARE_SIZE))
-        self.highlight_square = pygame.transform.scale(highlight_square , (SQUARE_SIZE, SQUARE_SIZE))
+        self.highlight_square = pygame.transform.scale(highlight_square, (SQUARE_SIZE, SQUARE_SIZE))
 
         self.piece_images = self.load_assets()
 
@@ -39,7 +40,6 @@ class Game:
         return {k: pygame.transform.scale(v, IMAGE_SIZES[k]) for k, v in d.items()}
 
     def run(self):
-        clicked_square_idx = None
 
         done = False
         while not done:
@@ -48,36 +48,38 @@ class Game:
                     done = True
 
                 if event.type == pygame.MOUSEBUTTONUP:
-                    sq_idx = self.get_square_under_mouse(event.pos)
-
-                    if clicked_square_idx is not None and sq_idx != clicked_square_idx:
-                        # get all moves where selected piece can move to and check if
-                        # sq_idx is one of them
-                        to_sq_str = self.get_sq_str(sq_idx)
-                        # todo simplify \ make this cleaner
-                        if len(list(filter(lambda move: to_sq_str in move[2:], self.highlighted_moves))) != 0:
-                            self.move_piece(clicked_square_idx, sq_idx)
-                            clicked_square_idx = None
-                            self.highlighted_moves = []
-                    elif clicked_square_idx is not None and sq_idx == clicked_square_idx:
-                        # if clicked on same square disable highlighting
-                        clicked_square_idx = None
-                        self.highlighted_moves = []
-                    else:
-                        self.highlighted_moves = self.get_allowed_moves(sq_idx)
-                        if self.highlighted_moves:  # I have allowed moves for this square -> set it as clicked
-                            clicked_square_idx = sq_idx
+                    self.handle_mouse_click(event.pos)
 
             self.canvas.fill(pygame.Color('black'))
 
             self.draw_squares()
-            self.draw_clicked_square(clicked_square_idx)  # highlight clicked sq
+            self.draw_clicked_square()  # highlight clicked sq
             self.draw_highlighted_squares()
             self.draw_pos()
 
             pygame.display.flip()
 
             self.clock.tick(10)
+
+    def handle_mouse_click(self, pos):
+        sq_idx = self.get_square_under_mouse(pos)
+        if self.clicked_square_idx is not None and sq_idx != self.clicked_square_idx:
+            # get all moves where selected piece can move to and check if
+            # sq_idx is one of them
+            to_sq_str = self.get_sq_str(sq_idx)
+            # todo simplify \ make this cleaner
+            if len(list(filter(lambda move: to_sq_str in move[2:], self.highlighted_moves))) != 0:
+                self.move_piece(self.clicked_square_idx, sq_idx)
+                self.clicked_square_idx = None
+                self.highlighted_moves = []
+        elif self.clicked_square_idx is not None and sq_idx == self.clicked_square_idx:
+            # if clicked on same square disable highlighting
+            self.clicked_square_idx = None
+            self.highlighted_moves = []
+        else:
+            self.highlighted_moves = self.get_allowed_moves(sq_idx)
+            if self.highlighted_moves:  # I have allowed moves for this square -> set it as clicked
+                self.clicked_square_idx = sq_idx
 
     @staticmethod
     def get_square_under_mouse(coords):
@@ -95,7 +97,8 @@ class Game:
         # this is used to track evey move since starting position
         self.move_history.append(self.get_move_str(from_sq, to_sq))
 
-    def parse_engine_moves(self, moves_str: str):
+    @staticmethod
+    def parse_engine_moves(moves_str: str):
         idx = moves_str.find("Moves found:")  # find start of moves string
         moves_str = moves_str[idx:]  # remove everything before that from string
         idx = moves_str.find("->")  # find delimiter where moves start
@@ -145,9 +148,9 @@ class Game:
                 padding_w, padding_h = (SQUARE_SIZE - image_w) // 2, (SQUARE_SIZE - image_h) // 2
                 self.canvas.blit(self.piece_images[piece], (w + padding_w, h + padding_h))
 
-    def draw_clicked_square(self, sq):
-        if sq is not None:
-            self.canvas.blit(self.highlight_square, self.square_loc[sq])
+    def draw_clicked_square(self):
+        if self.clicked_square_idx is not None:
+            self.canvas.blit(self.highlight_square, self.square_loc[self.clicked_square_idx])
 
     def draw_highlighted_squares(self):
         for move in self.highlighted_moves:

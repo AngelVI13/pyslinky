@@ -25,10 +25,12 @@ class Game:
         # -- Squares
         dark_square = pygame.image.load('assets/square brown dark_png_128px.png')
         light_square = pygame.image.load('assets/square brown light_png_128px.png')
-        highlight_square = pygame.image.load('assets/square gray light _png_128px.png')
+        # highlight_square = pygame.image.load('assets/square gray light _png_128px.png')
+        highlight_square = pygame.image.load('assets/highlighted_2.png')
         self.dark_square = pygame.transform.scale(dark_square, (SQUARE_SIZE, SQUARE_SIZE))
         self.light_square = pygame.transform.scale(light_square, (SQUARE_SIZE, SQUARE_SIZE))
-        self.highlight_square = pygame.transform.scale(highlight_square, (SQUARE_SIZE, SQUARE_SIZE))
+        # self.highlight_square = pygame.transform.scale(highlight_square, (SQUARE_SIZE, SQUARE_SIZE))
+        self.highlight_square = highlight_square
 
         self.piece_images = self.load_assets()
 
@@ -67,8 +69,8 @@ class Game:
             # get all moves where selected piece can move to and check if
             # sq_idx is one of them
             to_sq_str = self.get_sq_str(sq_idx)
-            # todo simplify \ make this cleaner
-            if len(list(filter(lambda move: to_sq_str in move[2:], self.highlighted_moves))) != 0:
+            moves_for_square = filter(lambda move: to_sq_str in move[2:], self.highlighted_moves)
+            if len(list(moves_for_square)) != 0:
                 self.move_piece(self.clicked_square_idx, sq_idx)
                 self.clicked_square_idx = None
                 self.highlighted_moves = []

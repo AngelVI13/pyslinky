@@ -4,9 +4,9 @@ import pygame
 from defines import *
 
 
-class Board:
-    def __init__(self):
-        pass
+WHITE = 0
+BLACK = 1
+BOTH = 2
 
 
 class Game:
@@ -34,6 +34,9 @@ class Game:
 
         self.piece_images = self.load_assets()
 
+        self.user_side = WHITE
+        self.side_to_move = WHITE
+
     @staticmethod
     def load_assets():
         # load all images
@@ -45,12 +48,19 @@ class Game:
 
         done = False
         while not done:
+            if self.user_side != self.side_to_move:
+                move = self.get_engine_move()
+                from_sq, to_sq = self.get_move_from_str(move)
+                self.move_piece(from_sq, to_sq)
+                self.side_to_move ^= 1
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True
 
                 if event.type == pygame.MOUSEBUTTONUP:
-                    self.handle_mouse_click(event.pos)
+                    if self.user_side == self.side_to_move:
+                        self.handle_mouse_click(event.pos)
 
             self.canvas.fill(pygame.Color('black'))
 
@@ -74,6 +84,7 @@ class Game:
                 self.move_piece(self.clicked_square_idx, sq_idx)
                 self.clicked_square_idx = None
                 self.highlighted_moves = []
+                self.side_to_move ^= 1  # switch side to move
         elif self.clicked_square_idx is not None and sq_idx == self.clicked_square_idx:
             # if clicked on same square disable highlighting
             self.clicked_square_idx = None
@@ -109,17 +120,48 @@ class Game:
         moves = map(lambda m: m.strip(), moves)  # remove extra whitespaces from move str
         return filter(lambda x: x != '', moves)  # return all non empty strings
 
+    def get_position_string(self):
+        command = "position startpos"
+        if self.move_history:
+            command = ' '.join([command, "moves", " ".join(self.move_history)])
+        return command
+
+    def parse_engine_move(self, response):
+        move_output_start_str = 'Engine move is '
+        move_output_end_str = '\n'
+        # find start string
+        start_idx = response.find(move_output_start_str)
+        # remove everything preceding it from response
+        response = response[start_idx + len(move_output_start_str):]
+
+        # find end of move info
+        end_idx = response.find(move_output_end_str)
+        # remove everything after it from response
+        move_str = response[:end_idx]
+        # clean up leading and trailing whitespaces
+        move_str = move_str.strip()
+        return move_str
+
+    def get_engine_move(self):
+        output = self.exec_engine_request(["go"])
+        move = self.parse_engine_move(output)
+        print(move)
+        return move
+
+    def exec_engine_request(self, commands):
+        command = "slinky.exe"
+        position = self.get_position_string()
+        parameters = ', '.join([f'{position}', *commands])
+        engine = subprocess.run([command, parameters], stdout=subprocess.PIPE)
+        output = engine.stdout.decode('utf-8')
+        return output
+
     def get_allowed_moves(self, sq):
         def is_start_square(move_):
             # check if sq matches the from part of move notation
             return self.get_sq_str(sq) in move_[:2]
 
-        command = "position startpos"
-        if self.move_history:
-            command = ' '.join([command, "moves", " ".join(self.move_history)])
-
-        engine = subprocess.run(["slinky.exe", f"{command}, getmoves"], stdout=subprocess.PIPE)
-        output = engine.stdout.decode('utf-8')
+        output = self.exec_engine_request(["getmoves"])
         moves = self.parse_engine_moves(output)
         moves_for_square = list(filter(is_start_square, moves))
         return moves_for_square
@@ -127,6 +169,11 @@ class Game:
     @classmethod
     def get_move_str(cls, from_sq, to_sq):
         return f'{cls.get_sq_str(from_sq)}{cls.get_sq_str(to_sq)}'
+
+    def get_move_from_str(self, move_str):  # todo promotion moves
+        from_sq = move_str[:2]  # todo castling moves don't work cause they move the king but dont move the rook
+        to_sq = move_str[2:]
+        return self.get_sq_from_str(from_sq), self.get_sq_from_str(to_sq)
 
     @staticmethod
     def get_sq_str(sq):
@@ -157,10 +204,15 @@ class Game:
     def draw_highlighted_squares(self):
         for move in self.highlighted_moves:
             to_sq = move[2:]  # the highlighted square is the destination square
-            file, rank = to_sq
-            file, rank = FILE_INT[file], int(rank)
-            sq = (ROWS - rank)*ROWS + file
+            sq = self.get_sq_from_str(to_sq)
             self.canvas.blit(self.highlight_square, self.square_loc[sq])
+
+    @staticmethod
+    def get_sq_from_str(sq_str):
+        file, rank = sq_str
+        file, rank = FILE_INT[file], int(rank)
+        sq = (ROWS - rank) * ROWS + file
+        return sq
 
     @staticmethod
     def compute_square_locations():
@@ -182,6 +234,6 @@ class Game:
 
 
 if __name__ == '__main__':
-    pygame.init()
+    pygame.init()  # todo add support for fen and communicate to engine with fen ?
     game = Game(DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT)
     game.run()

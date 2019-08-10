@@ -13,6 +13,10 @@ PIECE_RANGE = range(-6, 7, 1)
  EMPTY,  # [0]
  WPAWN, WKNIGHT, WBISHOP, WROOK, WQUEEN, WKING) = PIECE_RANGE  # [1;6]
 
+PIECE_CHARS = ['k', 'q', 'r', 'b', 'n', 'p', '.', 'P', 'N', 'B', 'R', 'Q', 'K']
+
+PIECE_MAP = dict(zip(PIECE_CHARS, PIECE_RANGE))
+
 START_POS = [
     BROOK, BKNIGHT, BBISHOP, BQUEEN, BKING, BBISHOP, BKNIGHT, BROOK,
     *[BPAWN]*ROWS,

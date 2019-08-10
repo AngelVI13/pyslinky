@@ -9,6 +9,14 @@ BLACK = 1
 BOTH = 2
 
 
+class EngineResponse:
+    fen_start_str = 'FEN: '
+    fen_end_str = '\n'
+
+    move_start_str = 'Engine move is '
+    move_end_str = '\n'
+
+
 class Game:
     def __init__(self, screen_width, screen_height):
         self.canvas = pygame.display.set_mode((screen_width, screen_height))
@@ -36,6 +44,7 @@ class Game:
 
         self.user_side = WHITE
         self.side_to_move = WHITE
+        self.fen = ''
 
     @staticmethod
     def load_assets():
@@ -49,9 +58,7 @@ class Game:
         done = False
         while not done:
             if self.user_side != self.side_to_move:
-                move = self.get_engine_move()
-                from_sq, to_sq = self.get_move_from_str(move)
-                self.move_piece(from_sq, to_sq)
+                self.make_engine_move()
                 self.side_to_move ^= 1
 
             for event in pygame.event.get():
@@ -103,12 +110,13 @@ class Game:
         return square_idx
 
     def move_piece(self, from_sq, to_sq):
-        piece_from = self.pos[from_sq]
-        self.pos[from_sq] = EMPTY  # remove piece from square
-        self.pos[to_sq] = piece_from  # put piece in destination
-
+        move_str = self.get_move_str(from_sq, to_sq)
+        response = self.exec_engine_request([move_str, "getfen"])
+        self.fen = self.get_string_between_markers(response, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
+        print('Received fen', self.fen)
+        self.parse_fen(self.fen)
         # this is used to track evey move since starting position
-        self.move_history.append(self.get_move_str(from_sq, to_sq))
+        self.move_history.append(move_str)
 
     @staticmethod
     def parse_engine_moves(moves_str: str):
@@ -121,37 +129,62 @@ class Game:
         return filter(lambda x: x != '', moves)  # return all non empty strings
 
     def get_position_string(self):
-        command = "position startpos"
-        if self.move_history:
-            command = ' '.join([command, "moves", " ".join(self.move_history)])
+        command = "position"
+        if self.fen:
+            command = ' '.join([command, 'fen', self.fen])
+        else:
+            command = ' '.join([command, 'startpos'])
         return command
 
-    def parse_engine_move(self, response):
-        move_output_start_str = 'Engine move is '
-        move_output_end_str = '\n'
+    @staticmethod
+    def get_string_between_markers(text, start_marker, end_marker):
         # find start string
-        start_idx = response.find(move_output_start_str)
-        # remove everything preceding it from response
-        response = response[start_idx + len(move_output_start_str):]
+        start_idx = text.find(start_marker)
+        # remove everything preceding it from text
+        text = text[start_idx + len(start_marker):]
 
-        # find end of move info
-        end_idx = response.find(move_output_end_str)
-        # remove everything after it from response
-        move_str = response[:end_idx]
+        # find end of string
+        end_idx = text.find(end_marker)
+        # remove everything after it from text
+        result = text[:end_idx]
         # clean up leading and trailing whitespaces
-        move_str = move_str.strip()
-        return move_str
+        result = result.strip()
+        return result
 
-    def get_engine_move(self):
+    def parse_fen(self, fen):
+        fen_parts = fen.split()
+        piece_layouts, *_ = fen_parts
+
+        piece_layouts = piece_layouts.split('/')
+        # flipped = ''.join(layout[::-1] for layout in piece_layouts)
+        flipped = ''.join(piece_layouts)
+
+        char_size = 1
+        index = 0
+        while flipped:
+            piece, flipped = flipped[:char_size], flipped[char_size:]
+            if piece in PIECE_MAP:
+                self.pos[index] = PIECE_MAP[piece]
+                index += 1
+            else:  # there is a digit
+                for _ in range(int(piece)):
+                    self.pos[index] = EMPTY
+                    index += 1
+
+    def make_engine_move(self):
         output = self.exec_engine_request(["go"])
-        move = self.parse_engine_move(output)
-        print(move)
+        # todo hold this in some history in order to display or whatever
+        move = self.get_string_between_markers(output, EngineResponse.move_start_str, EngineResponse.move_end_str)
+        self.fen = self.get_string_between_markers(output, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
+        print('Received fen', self.fen)
+        self.parse_fen(self.fen)
         return move
 
     def exec_engine_request(self, commands):
         command = "slinky.exe"
         position = self.get_position_string()
         parameters = ', '.join([f'{position}', *commands])
+        print(parameters)
         engine = subprocess.run([command, parameters], stdout=subprocess.PIPE)
         output = engine.stdout.decode('utf-8')
         return output
@@ -161,7 +194,9 @@ class Game:
             # check if sq matches the from part of move notation
             return self.get_sq_str(sq) in move_[:2]
 
-        output = self.exec_engine_request(["getmoves"])
+        output = self.exec_engine_request(["getmoves" , "getfen"])
+        self.fen = self.get_string_between_markers(output, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
+        print('Received fen', self.fen)
         moves = self.parse_engine_moves(output)
         moves_for_square = list(filter(is_start_square, moves))
         return moves_for_square

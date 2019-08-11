@@ -1,4 +1,5 @@
 import subprocess
+from functools import partial
 
 import pygame
 from defines import *
@@ -12,12 +13,41 @@ BLACK = 1
 BOTH = 2
 
 
+def get_string_between_markers(text, start_marker, end_marker):
+    # find start string
+    start_idx = text.find(start_marker)
+    # remove everything preceding it from text
+    text = text[start_idx + len(start_marker):]
+
+    # find end of string
+    end_idx = text.find(end_marker)
+    # remove everything after it from text
+    result = text[:end_idx]
+    # clean up leading and trailing whitespaces
+    result = result.strip()
+    return result
+
+
 class EngineResponse:
+    # todo end strings are always EOL -> don't need to define them separately
+    # todo 2. Instead of having small callbacks just parse output in a dict and return that ?
     fen_start_str = 'FEN: '
     fen_end_str = '\n'
 
     move_start_str = 'Engine move is '
     move_end_str = '\n'
+
+    king_sq_start_str = 'KingSq: '
+    king_sq_end_str = '\n'
+
+    in_check_start_str = 'InCheck: '
+    in_check_end_str = '\n'
+
+    extract_fen = partial(get_string_between_markers, start_marker=fen_start_str, end_marker=fen_end_str)
+    extract_move = partial(get_string_between_markers, start_marker=move_start_str, end_marker=move_end_str)
+    extract_king_sq = partial(get_string_between_markers, start_marker=king_sq_start_str, end_marker=king_sq_end_str)
+    extract_in_check = partial(get_string_between_markers, start_marker=in_check_start_str, end_marker=in_check_end_str)
+
 
 
 class Game:
@@ -36,18 +66,22 @@ class Game:
         # -- Squares
         dark_square = pygame.image.load('assets/square brown dark_png_128px.png')
         light_square = pygame.image.load('assets/square brown light_png_128px.png')
-        # highlight_square = pygame.image.load('assets/square gray light _png_128px.png')
+        highlight_check_square = pygame.image.load('assets/highlighted_1.png')
         highlight_square = pygame.image.load('assets/highlighted_2.png')
+        highlight_move_square = pygame.image.load('assets/highlighted_3.png')
         self.dark_square = pygame.transform.scale(dark_square, (SQUARE_SIZE, SQUARE_SIZE))
         self.light_square = pygame.transform.scale(light_square, (SQUARE_SIZE, SQUARE_SIZE))
-        # self.highlight_square = pygame.transform.scale(highlight_square, (SQUARE_SIZE, SQUARE_SIZE))
+        self.highlight_check_square = highlight_check_square
         self.highlight_square = highlight_square
+        self.highlight_move_square = highlight_move_square
 
         self.piece_images = self.load_assets()
 
         self.user_side = WHITE
         self.side_to_move = WHITE
         self.fen = ''
+        self.last_move = ''
+        self.in_check_sq = ''
 
     @staticmethod
     def load_assets():
@@ -76,7 +110,9 @@ class Game:
 
             self.draw_squares()
             self.draw_clicked_square()  # highlight clicked sq
-            self.draw_highlighted_squares()
+            self.draw_highlighted_squares()  # available moves for square
+            self.draw_highlighted_move()  # draw last made move
+            self.draw_sq_in_check()  # draw square in check
             self.draw_pos()
 
             pygame.display.flip()
@@ -114,8 +150,13 @@ class Game:
 
     def move_piece(self, from_sq, to_sq):
         move_str = self.get_move_str(from_sq, to_sq)
-        response = self.exec_engine_request([move_str, "getfen"])
-        self.fen = self.get_string_between_markers(response, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
+        self.last_move = move_str
+        response = self.exec_engine_request([move_str])
+        in_check = EngineResponse.extract_in_check(response)
+        # if we are in check get square that should be highlighted
+        self.in_check_sq = EngineResponse.extract_king_sq(response) if 'true' in in_check else ''
+
+        self.fen = EngineResponse.extract_fen(response)
         logging.info('Received fen: {}'.format(self.fen))
         self.parse_fen(self.fen)
         # this is used to track evey move since starting position
@@ -139,27 +180,11 @@ class Game:
             command = ' '.join([command, 'startpos'])
         return command
 
-    @staticmethod
-    def get_string_between_markers(text, start_marker, end_marker):
-        # find start string
-        start_idx = text.find(start_marker)
-        # remove everything preceding it from text
-        text = text[start_idx + len(start_marker):]
-
-        # find end of string
-        end_idx = text.find(end_marker)
-        # remove everything after it from text
-        result = text[:end_idx]
-        # clean up leading and trailing whitespaces
-        result = result.strip()
-        return result
-
     def parse_fen(self, fen):
         fen_parts = fen.split()
         piece_layouts, *_ = fen_parts
 
         piece_layouts = piece_layouts.split('/')
-        # flipped = ''.join(layout[::-1] for layout in piece_layouts)
         flipped = ''.join(piece_layouts)
 
         char_size = 1
@@ -177,18 +202,19 @@ class Game:
     def make_engine_move(self):
         output = self.exec_engine_request(["go"])
         # todo hold this in some history in order to display or whatever
-        move = self.get_string_between_markers(output, EngineResponse.move_start_str, EngineResponse.move_end_str)
-        self.fen = self.get_string_between_markers(output, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
+        self.last_move = EngineResponse.extract_move(output)
+        self.fen = EngineResponse.extract_fen(output)
         logging.info('Received fen: {}'.format(self.fen))
         self.parse_fen(self.fen)
-        return move
+
+        in_check = EngineResponse.extract_in_check(output)
+        # if we are in check get square that should be highlighted
+        self.in_check_sq = EngineResponse.extract_king_sq(output) if 'true' in in_check else ''
 
     # todo for every engine request, parse all game state relevant output
     # todo side to move, fen, poskey etc,
     # todo also add check that if Game is Over is found
     # todo will stop game
-    # todo also parse what move the engine made if possible
-    # todo and highlight it in gui
     def exec_engine_request(self, commands):
         command = "slinky.exe"
         position = self.get_position_string()
@@ -196,6 +222,7 @@ class Game:
         logging.info('Exec req params: {}'.format(parameters))
         engine = subprocess.run([command, parameters], stdout=subprocess.PIPE)
         output = engine.stdout.decode('utf-8')
+        logging.info(output)
         return output
 
     def get_allowed_moves(self, sq):
@@ -203,10 +230,7 @@ class Game:
             # check if sq matches the from part of move notation
             return self.get_sq_str(sq) in move_[:2]
 
-        # output = self.exec_engine_request(["getmoves" , "getfen"])
         output = self.exec_engine_request(["getmoves"])
-        # self.fen = self.get_string_between_markers(output, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
-        # print('Received fen', self.fen)
         moves = self.parse_engine_moves(output)
         moves_for_square = list(filter(is_start_square, moves))
         return moves_for_square
@@ -216,7 +240,7 @@ class Game:
         return f'{cls.get_sq_str(from_sq)}{cls.get_sq_str(to_sq)}'
 
     def get_move_from_str(self, move_str):  # todo promotion moves
-        from_sq = move_str[:2]  # todo castling moves don't work cause they move the king but dont move the rook
+        from_sq = move_str[:2]
         to_sq = move_str[2:]
         return self.get_sq_from_str(from_sq), self.get_sq_from_str(to_sq)
 
@@ -253,6 +277,19 @@ class Game:
             sq = self.get_sq_from_str(to_sq)
             self.canvas.blit(self.highlight_square, self.square_loc[sq])
 
+    def draw_highlighted_move(self):
+        if self.last_move:
+            from_sq_str, to_sq_str = self.last_move[:2], self.last_move[2:4]  # todo handle promotions
+            from_sq, to_sq = self.get_sq_from_str(from_sq_str), self.get_sq_from_str(to_sq_str)
+            self.canvas.blit(self.highlight_move_square, self.square_loc[from_sq])
+            self.canvas.blit(self.highlight_move_square, self.square_loc[to_sq])
+
+    def draw_sq_in_check(self):
+        if self.in_check_sq:
+            sq_in_check = self.in_check_sq[:2]
+            sq = self.get_sq_from_str(sq_in_check)
+            self.canvas.blit(self.highlight_check_square, self.square_loc[sq])
+
     @staticmethod
     def get_sq_from_str(sq_str):
         file, rank = sq_str
@@ -280,6 +317,6 @@ class Game:
 
 
 if __name__ == '__main__':
-    pygame.init()  # todo add support for fen and communicate to engine with fen ?
+    pygame.init()
     game = Game(DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT)
     game.run()

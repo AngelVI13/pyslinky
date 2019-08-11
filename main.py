@@ -3,6 +3,9 @@ import subprocess
 import pygame
 from defines import *
 
+import logging
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+
 
 WHITE = 0
 BLACK = 1
@@ -113,7 +116,7 @@ class Game:
         move_str = self.get_move_str(from_sq, to_sq)
         response = self.exec_engine_request([move_str, "getfen"])
         self.fen = self.get_string_between_markers(response, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
-        print('Received fen', self.fen)
+        logging.info('Received fen: {}'.format(self.fen))
         self.parse_fen(self.fen)
         # this is used to track evey move since starting position
         self.move_history.append(move_str)
@@ -176,15 +179,21 @@ class Game:
         # todo hold this in some history in order to display or whatever
         move = self.get_string_between_markers(output, EngineResponse.move_start_str, EngineResponse.move_end_str)
         self.fen = self.get_string_between_markers(output, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
-        print('Received fen', self.fen)
+        logging.info('Received fen: {}'.format(self.fen))
         self.parse_fen(self.fen)
         return move
 
+    # todo for every engine request, parse all game state relevant output
+    # todo side to move, fen, poskey etc,
+    # todo also add check that if Game is Over is found
+    # todo will stop game
+    # todo also parse what move the engine made if possible
+    # todo and highlight it in gui
     def exec_engine_request(self, commands):
         command = "slinky.exe"
         position = self.get_position_string()
         parameters = ', '.join([f'{position}', *commands])
-        print(parameters)
+        logging.info('Exec req params: {}'.format(parameters))
         engine = subprocess.run([command, parameters], stdout=subprocess.PIPE)
         output = engine.stdout.decode('utf-8')
         return output
@@ -194,9 +203,10 @@ class Game:
             # check if sq matches the from part of move notation
             return self.get_sq_str(sq) in move_[:2]
 
-        output = self.exec_engine_request(["getmoves" , "getfen"])
-        self.fen = self.get_string_between_markers(output, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
-        print('Received fen', self.fen)
+        # output = self.exec_engine_request(["getmoves" , "getfen"])
+        output = self.exec_engine_request(["getmoves"])
+        # self.fen = self.get_string_between_markers(output, EngineResponse.fen_start_str, EngineResponse.fen_end_str)
+        # print('Received fen', self.fen)
         moves = self.parse_engine_moves(output)
         moves_for_square = list(filter(is_start_square, moves))
         return moves_for_square
@@ -238,6 +248,7 @@ class Game:
 
     def draw_highlighted_squares(self):
         for move in self.highlighted_moves:
+            # todo here need to take into account promotions
             to_sq = move[2:]  # the highlighted square is the destination square
             sq = self.get_sq_from_str(to_sq)
             self.canvas.blit(self.highlight_square, self.square_loc[sq])

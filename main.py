@@ -5,12 +5,10 @@ import pygame
 from defines import *
 
 import logging
+
+from lib.board import Board
+
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-
-WHITE = 0
-BLACK = 1
-BOTH = 2
 
 
 def get_string_between_markers(text, start_marker, end_marker):
@@ -49,7 +47,6 @@ class EngineResponse:
     extract_in_check = partial(get_string_between_markers, start_marker=in_check_start_str, end_marker=in_check_end_str)
 
 
-
 class Game:
     def __init__(self, screen_width, screen_height):
         self.canvas = pygame.display.set_mode((screen_width, screen_height))
@@ -58,7 +55,8 @@ class Game:
         self.clock = pygame.time.Clock()
 
         self.square_loc = self.compute_square_locations()
-        self.pos = START_POS
+        self.board = Board()
+        self.board.parse_fen(START_FEN)
         self.move_history = []
         self.highlighted_moves = []
         self.clicked_square_idx = None
@@ -81,7 +79,7 @@ class Game:
         self.side_to_move = WHITE
         self.fen = ''
         self.last_move = ''
-        self.in_check_sq = ''
+        self.in_check_sq = None
 
     @staticmethod
     def load_assets():
@@ -151,14 +149,18 @@ class Game:
     def move_piece(self, from_sq, to_sq):
         move_str = self.get_move_str(from_sq, to_sq)
         self.last_move = move_str
-        response = self.exec_engine_request([move_str])
-        in_check = EngineResponse.extract_in_check(response)
-        # if we are in check get square that should be highlighted
-        self.in_check_sq = EngineResponse.extract_king_sq(response) if 'true' in in_check else ''
+        # response = self.exec_engine_request([move_str])
+        print(f'move: {move_str}')
+        print(self.board)
+        self.board.make_move(self.board.parse_move(move_str))
+        print(self.board)
 
-        self.fen = EngineResponse.extract_fen(response)
-        logging.info('Received fen: {}'.format(self.fen))
-        self.parse_fen(self.fen)
+        in_check = self.board.is_square_attacked(self.board.kingSquare[self.board.side],
+                                                 self.board.side ^ 1)  # EngineResponse.extract_in_check(output)
+        # if we are in check get square that should be highlighted
+        self.in_check_sq = self.board.kingSquare[self.board.side] if in_check else None
+        # todo this doesn't work -> sq_in_check is a moveint that is 120 based not 64
+
         # this is used to track evey move since starting position
         self.move_history.append(move_str)
 
@@ -180,36 +182,39 @@ class Game:
             command = ' '.join([command, 'startpos'])
         return command
 
-    def parse_fen(self, fen):
-        fen_parts = fen.split()
-        piece_layouts, *_ = fen_parts
-
-        piece_layouts = piece_layouts.split('/')
-        flipped = ''.join(piece_layouts)
-
-        char_size = 1
-        index = 0
-        while flipped:
-            piece, flipped = flipped[:char_size], flipped[char_size:]
-            if piece in PIECE_MAP:
-                self.pos[index] = PIECE_MAP[piece]
-                index += 1
-            else:  # there is a digit
-                for _ in range(int(piece)):
-                    self.pos[index] = EMPTY
-                    index += 1
+    # todo move to board side
+    # def parse_fen(self, fen):
+    #     fen_parts = fen.split()
+    #     piece_layouts, *_ = fen_parts
+    #
+    #     piece_layouts = piece_layouts.split('/')
+    #     flipped = ''.join(piece_layouts)
+    #
+    #     char_size = 1
+    #     index = 0
+    #     while flipped:
+    #         piece, flipped = flipped[:char_size], flipped[char_size:]
+    #         if piece in PIECE_MAP:
+    #             self.pos[index] = PIECE_MAP[piece]
+    #             index += 1
+    #         else:  # there is a digit
+    #             for _ in range(int(piece)):
+    #                 self.pos[index] = EMPTY
+    #                 index += 1
 
     def make_engine_move(self):
-        output = self.exec_engine_request(["go"])
+        # output = self.exec_engine_request(["go"])
         # todo hold this in some history in order to display or whatever
-        self.last_move = EngineResponse.extract_move(output)
-        self.fen = EngineResponse.extract_fen(output)
-        logging.info('Received fen: {}'.format(self.fen))
-        self.parse_fen(self.fen)
+        move_int = self.board.get_moves()[0]  # EngineResponse.extract_move(output)
+        print(f'Engine move {self.board.moveGenerator.print_move(move_int)}')
+        print(self.board)
+        self.board.make_move(move_int)
+        print(self.board)
+        self.last_move = self.board.moveGenerator.print_move(move_int)
 
-        in_check = EngineResponse.extract_in_check(output)
+        in_check = self.board.is_square_attacked(self.board.kingSquare[self.board.side], self.board.side ^ 1)  # EngineResponse.extract_in_check(output)
         # if we are in check get square that should be highlighted
-        self.in_check_sq = EngineResponse.extract_king_sq(output) if 'true' in in_check else ''
+        self.in_check_sq = self.board.kingSquare[self.board.side] if in_check else None
 
     # todo for every engine request, parse all game state relevant output
     # todo side to move, fen, poskey etc,
@@ -230,8 +235,10 @@ class Game:
             # check if sq matches the from part of move notation
             return self.get_sq_str(sq) in move_[:2]
 
-        output = self.exec_engine_request(["getmoves"])
-        moves = self.parse_engine_moves(output)
+        # output = self.exec_engine_request(["getmoves"])
+        # moves = self.parse_engine_moves(output)
+        moves = self.board.get_moves()
+        moves = map(lambda move_: self.board.moveGenerator.print_move(move_), moves)
         moves_for_square = list(filter(is_start_square, moves))
         return moves_for_square
 
@@ -259,8 +266,12 @@ class Game:
                 self.canvas.blit(self.dark_square, self.square_loc[i])
 
     def draw_pos(self):
-        for idx, piece in enumerate(self.pos):
-            if piece != EMPTY:
+        for idx, piece in enumerate(self.board.pieces):
+            if piece != EMPTY and piece != OFF_BOARD:
+                idx = self.board.conversion.Sq120ToSq64[idx]
+                row, col = divmod(idx, ROWS)
+                # print(idx, row, col)
+                idx = (ROWS - row - 1) * ROWS + col
                 w, h = self.square_loc[idx]
                 image_w, image_h = IMAGE_SIZES[piece]
                 padding_w, padding_h = (SQUARE_SIZE - image_w) // 2, (SQUARE_SIZE - image_h) // 2
@@ -286,9 +297,7 @@ class Game:
 
     def draw_sq_in_check(self):
         if self.in_check_sq:
-            sq_in_check = self.in_check_sq[:2]
-            sq = self.get_sq_from_str(sq_in_check)
-            self.canvas.blit(self.highlight_check_square, self.square_loc[sq])
+            self.canvas.blit(self.highlight_check_square, self.square_loc[self.in_check_sq])
 
     @staticmethod
     def get_sq_from_str(sq_str):

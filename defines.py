@@ -1,5 +1,7 @@
-DEFAULT_CANVAS_WIDTH = 800
-DEFAULT_CANVAS_HEIGHT = 600
+from lib.constants import *
+
+DEFAULT_CANVAS_WIDTH = 8*64  # 800
+DEFAULT_CANVAS_HEIGHT = 8*64  # 600
 SQUARE_SIZE = 64
 ROWS = 8
 BOARD_SIZE = ROWS * ROWS
@@ -7,57 +9,36 @@ BOARD_SIZE = ROWS * ROWS
 PAWN_PADDING_LEFT = 8
 PAWN_PADDING_TOP = 3
 
-PIECE_RANGE = range(-6, 7, 1)
-
-(BKING, BQUEEN, BROOK, BBISHOP, BKNIGHT, BPAWN,  # [-6;-1]
- EMPTY,  # [0]
- WPAWN, WKNIGHT, WBISHOP, WROOK, WQUEEN, WKING) = PIECE_RANGE  # [1;6]
-
-PIECE_CHARS = ['k', 'q', 'r', 'b', 'n', 'p', '.', 'P', 'N', 'B', 'R', 'Q', 'K']
-
-PIECE_MAP = dict(zip(PIECE_CHARS, PIECE_RANGE))
-
-START_POS = [
-    BROOK, BKNIGHT, BBISHOP, BQUEEN, BKING, BBISHOP, BKNIGHT, BROOK,
-    *[BPAWN]*ROWS,
-    *[EMPTY]*ROWS,
-    *[EMPTY]*ROWS,
-    *[EMPTY]*ROWS,
-    *[EMPTY]*ROWS,
-    *[WPAWN]*ROWS,
-    WROOK, WKNIGHT, WBISHOP, WQUEEN, WKING, WBISHOP, WKNIGHT, WROOK,
-]
-
 FILE_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
 FILE_INT = {v: k for k, v in FILE_CHAR.items()}  # inverting above dict so we can get int from char
 
 IMAGE_PATHS = {
-    BPAWN: 'assets/b_pawn_png_128px.png',
-    WPAWN: 'assets/w_pawn_png_128px.png',
-    BKNIGHT: 'assets/b_knight_png_128px.png',
-    WKNIGHT: 'assets/w_knight_png_128px.png',
-    BBISHOP: 'assets/b_bishop_png_128px.png',
-    WBISHOP: 'assets/w_bishop_png_128px.png',
-    BROOK: 'assets/b_rook_png_128px.png',
-    WROOK: 'assets/w_rook_png_128px.png',
-    BQUEEN: 'assets/b_queen_png_128px.png',
-    WQUEEN: 'assets/w_queen_png_128px.png',
-    BKING: 'assets/b_king_png_128px.png',
-    WKING: 'assets/w_king_png_128px.png',
+    BLACK_PAWN: 'assets/b_pawn_png_128px.png',
+    WHITE_PAWN: 'assets/w_pawn_png_128px.png',
+    BLACK_KNIGHT: 'assets/b_knight_png_128px.png',
+    WHITE_KNIGHT: 'assets/w_knight_png_128px.png',
+    BLACK_BISHOP: 'assets/b_bishop_png_128px.png',
+    WHITE_BISHOP: 'assets/w_bishop_png_128px.png',
+    BLACK_ROOK: 'assets/b_rook_png_128px.png',
+    WHITE_ROOK: 'assets/w_rook_png_128px.png',
+    BLACK_QUEEN: 'assets/b_queen_png_128px.png',
+    WHITE_QUEEN: 'assets/w_queen_png_128px.png',
+    BLACK_KING: 'assets/b_king_png_128px.png',
+    WHITE_KING: 'assets/w_king_png_128px.png',
 }
 
 IMAGE_SIZES = {
     #    : (w, h)
-    BPAWN: (48, 58),
-    WPAWN: (48, 58),
-    BKNIGHT: (52, 58),
-    WKNIGHT: (52, 58),
-    BBISHOP: (58, 58),
-    WBISHOP: (58, 58),
-    BROOK: (53, 58),
-    WROOK: (53, 58),
-    BQUEEN: (58, 52),
-    WQUEEN: (58, 52),
-    BKING: (58, 58),
-    WKING: (58, 58),
+    BLACK_PAWN: (48, 58),
+    WHITE_PAWN: (48, 58),
+    BLACK_KNIGHT: (52, 58),
+    WHITE_KNIGHT: (52, 58),
+    BLACK_BISHOP: (58, 58),
+    WHITE_BISHOP: (58, 58),
+    BLACK_ROOK: (53, 58),
+    WHITE_ROOK: (53, 58),
+    BLACK_QUEEN: (58, 52),
+    WHITE_QUEEN: (58, 52),
+    BLACK_KING: (58, 58),
+    WHITE_KING: (58, 58),
 }

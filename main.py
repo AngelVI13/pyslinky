@@ -1,13 +1,16 @@
 import subprocess
+import time
 from functools import partial
+import threading
+from queue import Queue, Empty
 
 import pygame
 from defines import *
 
-import logging
 
 from lib.board import Board
 
+import logging
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 
@@ -55,9 +58,19 @@ class Game:
         self.clock = pygame.time.Clock()
 
         self.square_loc = self.compute_square_locations()
+
+        # --- Board related vars
         self.board = Board()
         self.board.parse_fen(START_FEN)
         self.move_history = []
+        # --- Engine process
+        path_to_engine = 'slinky.exe'
+        self.engine_process = subprocess.Popen([path_to_engine], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        time.sleep(3)
+        self.engine_out_queue = Queue()
+        self.engine_info = self.init_engine_uci()
+        # --
+
         self.highlighted_moves = []
         self.clicked_square_idx = None
         # --- Images
@@ -76,7 +89,6 @@ class Game:
         self.piece_images = self.load_assets()
 
         self.user_side = WHITE
-        self.side_to_move = WHITE
         self.fen = ''
         self.last_move = ''
         self.in_check_sq = None
@@ -88,20 +100,50 @@ class Game:
         # scale them
         return {k: pygame.transform.scale(v, IMAGE_SIZES[k]) for k, v in d.items()}
 
+    def init_engine_uci(self):
+        out = self.exec_engine_command(b'uci\n')
+
+        engine_info = {}
+        for line in out:
+            if 'id name' in line:
+                _, name = line.split('id name', maxsplit=1)
+                engine_info['name'] = name.strip()
+            elif 'id author' in line:
+                _, author = line.split('id author', maxsplit=1)
+                engine_info['author'] = author.strip()
+
+        return engine_info
+
+    @staticmethod
+    def output_reader(proc, out_queue: Queue, in_queue: Queue):
+        while True:
+            line = proc.stdout.readline()
+            out_queue.put(line.decode('utf-8'))
+
+            try:
+                val = in_queue.get()
+            except Empty:
+                continue
+            else:
+                if val is True:
+                    break  # terminate thread
+        # for line in iter(proc.stdout.readline, b''):
+        #     queue.put(line.decode('utf-8'))
+
     def run(self):
 
         done = False
         while not done:
-            if self.user_side != self.side_to_move:
+            if self.user_side != self.board.side:
+                time.sleep(2)
                 self.make_engine_move()
-                self.side_to_move ^= 1
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True
 
                 if event.type == pygame.MOUSEBUTTONUP:
-                    if self.user_side == self.side_to_move:
+                    if self.user_side == self.board.side:
                         self.handle_mouse_click(event.pos)
 
             self.canvas.fill(pygame.Color('black'))
@@ -128,7 +170,6 @@ class Game:
                 self.move_piece(self.clicked_square_idx, sq_idx)
                 self.clicked_square_idx = None
                 self.highlighted_moves = []
-                self.side_to_move ^= 1  # switch side to move
         elif self.clicked_square_idx is not None and sq_idx == self.clicked_square_idx:
             # if clicked on same square disable highlighting
             self.clicked_square_idx = None
@@ -149,30 +190,16 @@ class Game:
     def move_piece(self, from_sq, to_sq):
         move_str = self.get_move_str(from_sq, to_sq)
         self.last_move = move_str
-        # response = self.exec_engine_request([move_str])
-        print(f'move: {move_str}')
-        print(self.board)
         self.board.make_move(self.board.parse_move(move_str))
-        print(self.board)
 
         in_check = self.board.is_square_attacked(self.board.kingSquare[self.board.side],
-                                                 self.board.side ^ 1)  # EngineResponse.extract_in_check(output)
+                                                 self.board.side ^ 1)
         # if we are in check get square that should be highlighted
-        self.in_check_sq = self.board.kingSquare[self.board.side] if in_check else None
-        # todo this doesn't work -> sq_in_check is a moveint that is 120 based not 64
+        sq = self.get_draw_square(self.board.kingSquare[self.board.side])
+        self.in_check_sq = sq if in_check else None
 
         # this is used to track evey move since starting position
         self.move_history.append(move_str)
-
-    @staticmethod
-    def parse_engine_moves(moves_str: str):
-        idx = moves_str.find("Moves found:")  # find start of moves string
-        moves_str = moves_str[idx:]  # remove everything before that from string
-        idx = moves_str.find("->")  # find delimiter where moves start
-        moves_str = moves_str[idx + len("->"):].strip()  # remove everything before it
-        moves = moves_str.split(",")  # split moves based on commas
-        moves = map(lambda m: m.strip(), moves)  # remove extra whitespaces from move str
-        return filter(lambda x: x != '', moves)  # return all non empty strings
 
     def get_position_string(self):
         command = "position"
@@ -180,7 +207,10 @@ class Game:
             command = ' '.join([command, 'fen', self.fen])
         else:
             command = ' '.join([command, 'startpos'])
-        return command
+
+        if self.move_history:
+            command = ' '.join([command, 'moves', *self.move_history])
+        return ''.join([command, '\n'])
 
     # todo move to board side
     # def parse_fen(self, fen):
@@ -203,23 +233,43 @@ class Game:
     #                 index += 1
 
     def make_engine_move(self):
-        # output = self.exec_engine_request(["go"])
-        # todo hold this in some history in order to display or whatever
+        out = self.exec_engine_command(b'isready')
+        assert 'readyok' in out
+        # set position
+        command = self.get_position_string()
+        _ = self.exec_engine_command(command.encode('utf-8'))
+        # set parameters and start engine search
+        out = self.exec_engine_command(b'go movetime 3\n')
+        logging.info(out)
+
+        # todo get this move from the engine
         move_int = self.board.get_moves()[0]  # EngineResponse.extract_move(output)
-        print(f'Engine move {self.board.moveGenerator.print_move(move_int)}')
-        print(self.board)
         self.board.make_move(move_int)
-        print(self.board)
         self.last_move = self.board.moveGenerator.print_move(move_int)
+        self.move_history.append(self.last_move)
 
-        in_check = self.board.is_square_attacked(self.board.kingSquare[self.board.side], self.board.side ^ 1)  # EngineResponse.extract_in_check(output)
+        in_check = self.board.is_square_attacked(self.board.kingSquare[self.board.side], self.board.side ^ 1)
         # if we are in check get square that should be highlighted
-        self.in_check_sq = self.board.kingSquare[self.board.side] if in_check else None
+        sq = self.get_draw_square(self.board.kingSquare[self.board.side])
+        self.in_check_sq = sq if in_check else None
 
-    # todo for every engine request, parse all game state relevant output
-    # todo side to move, fen, poskey etc,
-    # todo also add check that if Game is Over is found
-    # todo will stop game
+    def exec_engine_command(self, command):
+        # todo use some gRPC to a Go service that executes engine commands
+        in_queue = Queue()  # move this somewhere else -> don't create a queue for every thread
+        t = threading.Thread(target=self.output_reader, args=(self.engine_process, self.engine_out_queue, in_queue, ))
+        t.start()
+
+        self.engine_process.stdin.write(command)  # UCI start command
+        self.engine_process.stdin.flush()
+
+        time.sleep(3)
+        out = []
+        while not self.engine_out_queue.empty():
+            out.append(self.engine_out_queue.get())
+
+        in_queue.put(True)  # signal to thread to end todo needed ?
+        return out
+
     def exec_engine_request(self, commands):
         command = "slinky.exe"
         position = self.get_position_string()
@@ -235,10 +285,10 @@ class Game:
             # check if sq matches the from part of move notation
             return self.get_sq_str(sq) in move_[:2]
 
-        # output = self.exec_engine_request(["getmoves"])
-        # moves = self.parse_engine_moves(output)
         moves = self.board.get_moves()
+        # convert moves to string
         moves = map(lambda move_: self.board.moveGenerator.print_move(move_), moves)
+        # filter out moves that don't start with the same start square
         moves_for_square = list(filter(is_start_square, moves))
         return moves_for_square
 
@@ -256,6 +306,15 @@ class Game:
         row, col = divmod(sq, ROWS)
         return f'{FILE_CHAR[col]}{ROWS - row}'  # subtraction is needed since index 0 is a8 and not a1
 
+    def get_draw_square(self, sq: int) -> int:
+        """Convert a square from 120 board representation of chess logic
+        to 64-based representation of GUI grid.
+        """
+        sq = self.board.conversion.Sq120ToSq64[sq]
+        row, col = divmod(sq, ROWS)
+        sq = (ROWS - row - 1) * ROWS + col
+        return sq
+
     def draw_squares(self):
         for i in range(BOARD_SIZE):
             row, _ = divmod(i, ROWS)
@@ -268,10 +327,7 @@ class Game:
     def draw_pos(self):
         for idx, piece in enumerate(self.board.pieces):
             if piece != EMPTY and piece != OFF_BOARD:
-                idx = self.board.conversion.Sq120ToSq64[idx]
-                row, col = divmod(idx, ROWS)
-                # print(idx, row, col)
-                idx = (ROWS - row - 1) * ROWS + col
+                idx = self.get_draw_square(idx)
                 w, h = self.square_loc[idx]
                 image_w, image_h = IMAGE_SIZES[piece]
                 padding_w, padding_h = (SQUARE_SIZE - image_w) // 2, (SQUARE_SIZE - image_h) // 2
@@ -290,7 +346,7 @@ class Game:
 
     def draw_highlighted_move(self):
         if self.last_move:
-            from_sq_str, to_sq_str = self.last_move[:2], self.last_move[2:4]  # todo handle promotions
+            from_sq_str, to_sq_str = self.last_move[:2], self.last_move[2:4]
             from_sq, to_sq = self.get_sq_from_str(from_sq_str), self.get_sq_from_str(to_sq_str)
             self.canvas.blit(self.highlight_move_square, self.square_loc[from_sq])
             self.canvas.blit(self.highlight_move_square, self.square_loc[to_sq])

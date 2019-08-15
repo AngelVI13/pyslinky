@@ -251,11 +251,13 @@ class Game:
 
         # set parameters and start engine search
         # 4 seconds timeout for a request that takes 3 seconds
-        message = protos.adapter_pb2.Request(text="go movetime 3000\n", timeout=4)
+        message = protos.adapter_pb2.Request(text="go movetime 3000\n", timeout=2)
         response = self.stub.ExecuteEngineCommand(message)
         out = response.text
         logging.info(out)
-        move_ = out.split('bestmove ')[-1].strip()  # todo make this nicer
+        move_ = out.split('bestmove ')[-1]   # .strip()  # todo make this nicer
+        move_ = move_.split(' ')[0]  # take the first word after bestmove
+        move_ = move_.strip()
         self.board.parse_move(move_)
         self.board.make_move(self.board.parse_move(move_))
         self.last_move = move_

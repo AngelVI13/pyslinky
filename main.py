@@ -4,8 +4,12 @@ from functools import partial
 import threading
 from queue import Queue, Empty
 
+import grpc
 import pygame
 from defines import *
+import protos.adapter_pb2
+import protos.adapter_pb2_grpc
+
 
 
 from lib.board import Board
@@ -64,11 +68,9 @@ class Game:
         self.board.parse_fen(START_FEN)
         self.move_history = []
         # --- Engine process
-        path_to_engine = 'slinky.exe'
-        self.engine_process = subprocess.Popen([path_to_engine], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        time.sleep(3)
-        self.engine_out_queue = Queue()
-        self.engine_info = self.init_engine_uci()
+        channel = grpc.insecure_channel('localhost:50051')
+        self.stub = protos.adapter_pb2_grpc.AdapterStub(channel)
+        print(self.init_engine_uci())  # todo use info from here to display engine info
         # --
 
         self.highlighted_moves = []
@@ -101,10 +103,13 @@ class Game:
         return {k: pygame.transform.scale(v, IMAGE_SIZES[k]) for k, v in d.items()}
 
     def init_engine_uci(self):
-        out = self.exec_engine_command(b'uci\n')
+        message = protos.adapter_pb2.Request(text="uci\n", timeout=1)
+        response = self.stub.ExecuteEngineCommand(message)
+
+        out = response.text
 
         engine_info = {}
-        for line in out:
+        for line in out.split('\n'):
             if 'id name' in line:
                 _, name = line.split('id name', maxsplit=1)
                 engine_info['name'] = name.strip()
@@ -233,19 +238,27 @@ class Game:
     #                 index += 1
 
     def make_engine_move(self):
-        out = self.exec_engine_command(b'isready')
+        message = protos.adapter_pb2.Request(text="isready\n", timeout=1)
+        response = self.stub.ExecuteEngineCommand(message)
+
+        out = response.text
         assert 'readyok' in out
+
         # set position
         command = self.get_position_string()
-        _ = self.exec_engine_command(command.encode('utf-8'))
-        # set parameters and start engine search
-        out = self.exec_engine_command(b'go movetime 3\n')
-        logging.info(out)
+        message = protos.adapter_pb2.Request(text=command, timeout=1)
+        _ = self.stub.ExecuteEngineCommand(message)  # no response is expected
 
-        # todo get this move from the engine
-        move_int = self.board.get_moves()[0]  # EngineResponse.extract_move(output)
-        self.board.make_move(move_int)
-        self.last_move = self.board.moveGenerator.print_move(move_int)
+        # set parameters and start engine search
+        # 4 seconds timeout for a request that takes 3 seconds
+        message = protos.adapter_pb2.Request(text="go movetime 3000\n", timeout=4)
+        response = self.stub.ExecuteEngineCommand(message)
+        out = response.text
+        logging.info(out)
+        move_ = out.split('bestmove ')[-1].strip()  # todo make this nicer
+        self.board.parse_move(move_)
+        self.board.make_move(self.board.parse_move(move_))
+        self.last_move = move_
         self.move_history.append(self.last_move)
 
         in_check = self.board.is_square_attacked(self.board.kingSquare[self.board.side], self.board.side ^ 1)

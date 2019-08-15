@@ -7,6 +7,7 @@ service Adapter {
 
 message Request {
   string text = 1;
+  int32 timeout = 2;
 }
 
 // Todo potentially add more features/info here

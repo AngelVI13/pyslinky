@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=None,
-  serialized_pb=_b('\n\radapter.proto\"\x17\n\x07Request\x12\x0c\n\x04text\x18\x01 \x01(\t\"\x18\n\x08Response\x12\x0c\n\x04text\x18\x01 \x01(\t28\n\x07\x41\x64\x61pter\x12-\n\x14\x45xecuteEngineCommand\x12\x08.Request\x1a\t.Response\"\x00\x62\x06proto3')
+  serialized_pb=_b('\n\radapter.proto\"(\n\x07Request\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x0f\n\x07timeout\x18\x02 \x01(\x05\"\x18\n\x08Response\x12\x0c\n\x04text\x18\x01 \x01(\t28\n\x07\x41\x64\x61pter\x12-\n\x14\x45xecuteEngineCommand\x12\x08.Request\x1a\t.Response\"\x00\x62\x06proto3')
 )
 
 
@@ -40,6 +40,13 @@ _REQUEST = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='timeout', full_name='Request.timeout', index=1,
+      number=2, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -53,7 +60,7 @@ _REQUEST = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=17,
-  serialized_end=40,
+  serialized_end=57,
 )
 
 
@@ -83,8 +90,8 @@ _RESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=42,
-  serialized_end=66,
+  serialized_start=59,
+  serialized_end=83,
 )
 
 DESCRIPTOR.message_types_by_name['Request'] = _REQUEST
@@ -113,8 +120,8 @@ _ADAPTER = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   serialized_options=None,
-  serialized_start=68,
-  serialized_end=124,
+  serialized_start=85,
+  serialized_end=141,
   methods=[
   _descriptor.MethodDescriptor(
     name='ExecuteEngineCommand',

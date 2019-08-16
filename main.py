@@ -25,35 +25,53 @@ class Game:
         # --- Board related vars
         self.board = Board()
         self.board.parse_fen(START_FEN)
+        # fen = 'rnbqkbnr/p1pppppp/8/2P5/8/2N1P3/1p1P1PPP/R1BQKBNR b KQkq - 0 5'
+        # self.board.parse_fen(fen)
         self.move_history = []
         # --- Engine process
         channel = grpc.insecure_channel('localhost:50051')
         self.stub = protos.adapter_pb2_grpc.AdapterStub(channel)
         self.init_engine_uci()
+        self.engine_info = None
         # --
 
         self.highlighted_moves = []
+        self.promotion_moves = []
+        # after promotion moves are drawn, this stores info about where each promotion move is drawn on the board
+        self.promotion_choices = {}
         self.clicked_square_idx = None
         # --- Images
         # -- Squares
         dark_square = pygame.image.load('assets/square brown dark_png_128px.png')
         light_square = pygame.image.load('assets/square brown light_png_128px.png')
+        black_square = pygame.image.load('assets/square gray dark _png_128px.png')
         highlight_check_square = pygame.image.load('assets/highlighted_1.png')
         highlight_square = pygame.image.load('assets/highlighted_2.png')
         highlight_move_square = pygame.image.load('assets/highlighted_3.png')
         self.dark_square = pygame.transform.scale(dark_square, (SQUARE_SIZE, SQUARE_SIZE))
         self.light_square = pygame.transform.scale(light_square, (SQUARE_SIZE, SQUARE_SIZE))
+        self.black_square = pygame.transform.scale(black_square, (SQUARE_SIZE, SQUARE_SIZE))
         self.highlight_check_square = highlight_check_square
         self.highlight_square = highlight_square
         self.highlight_move_square = highlight_move_square
 
         self.piece_images = self.load_assets()
 
-        self.user_side = WHITE
+        self.user_side = BLACK
+        # self.fen = 'rnbqkbnr/p1pppppp/8/2P5/8/2N1P3/1p1P1PPP/R1BQKBNR b KQkq - 0 5'  # ''
         self.fen = ''
         self.last_move = ''
         self.in_check_sq = None
         self.engine_triggered = False
+
+    def blit_alpha(self, source, location, opacity):
+        x = location[0]
+        y = location[1]
+        temp = pygame.Surface((source.get_width(), source.get_height())).convert()
+        temp.blit(self.canvas, (-x, -y))
+        temp.blit(source, (0, 0))
+        temp.set_alpha(opacity)
+        self.canvas.blit(temp, location)
 
     @staticmethod
     def load_assets():
@@ -62,8 +80,7 @@ class Game:
         # scale them
         return {k: pygame.transform.scale(v, IMAGE_SIZES[k]) for k, v in d.items()}
 
-    @staticmethod
-    def parse_engine_info(call_future):  # todo use info from here to display engine info
+    def parse_engine_info(self, call_future):  # todo use info from here to display engine info
         response = call_future.result()
         out = response.text
 
@@ -76,8 +93,7 @@ class Game:
                 _, author = line.split('id author', maxsplit=1)
                 engine_info['author'] = author.strip()
 
-        print(engine_info)
-        return engine_info
+        self.engine_info = engine_info
 
     def init_engine_uci(self):
         message = protos.adapter_pb2.Request(text="uci\n", timeout=1)
@@ -85,10 +101,11 @@ class Game:
         call_future.add_done_callback(self.parse_engine_info)
 
     def run(self):
-
         done = False
         while not done:
-            if self.user_side != self.board.side and self.engine_triggered is False:
+            # If it is the opposite side's turn and the engine hasn't been triggered already
+            # and the engine has been initialized i.e. engine_info is available
+            if self.user_side != self.board.side and self.engine_triggered is False and self.engine_info:
                 self.make_engine_move()
                 self.engine_triggered = True
 
@@ -108,26 +125,49 @@ class Game:
             self.draw_highlighted_move()  # draw last made move
             self.draw_sq_in_check()  # draw square in check
             self.draw_pos()
+            self.draw_promotion_moves()
 
             pygame.display.flip()
 
-            self.clock.tick(10)
+            self.clock.tick(10)  # 10 FPS
 
     def handle_mouse_click(self, pos):
         sq_idx = self.get_square_under_mouse(pos)
+
+        if self.promotion_moves and sq_idx in self.promotion_choices:
+            # if user clicked on the available promotion options
+            self.move_piece(self.promotion_choices[sq_idx])
+            self.clicked_square_idx = None  # todo add reset method for all these vars
+            self.highlighted_moves = []
+            self.promotion_moves = []
+            self.promotion_choices = {}
+
         if self.clicked_square_idx is not None and sq_idx != self.clicked_square_idx:
             # get all moves where selected piece can move to and check if
             # sq_idx is one of them
             to_sq_str = self.get_sq_str(sq_idx)
-            moves_for_square = filter(lambda move: to_sq_str in move[2:], self.highlighted_moves)
-            if len(list(moves_for_square)) != 0:
-                self.move_piece(self.clicked_square_idx, sq_idx)
+            moves_for_square = list(filter(lambda move: to_sq_str in move[2:4], self.highlighted_moves))
+            if len(moves_for_square) == 1:
+                move_str = self.get_move_str(self.clicked_square_idx, sq_idx)
+                self.move_piece(move_str)
                 self.clicked_square_idx = None
                 self.highlighted_moves = []
+            elif len(moves_for_square) > 1:
+                # this is the case for promotions a lot of moves match the 'FROM' and 'TO' squares
+                # but differ in the promotion piece
+                self.promotion_moves = moves_for_square
+            else:
+                # selected square is not one of the available moves -> reset clicking options
+                self.clicked_square_idx = None
+                self.highlighted_moves = []
+                self.promotion_moves = []
+                self.promotion_choices = {}
         elif self.clicked_square_idx is not None and sq_idx == self.clicked_square_idx:
             # if clicked on same square disable highlighting
             self.clicked_square_idx = None
             self.highlighted_moves = []
+            self.promotion_moves = []
+            self.promotion_choices = {}
         else:
             self.highlighted_moves = self.get_allowed_moves(sq_idx)
             if self.highlighted_moves:  # I have allowed moves for this square -> set it as clicked
@@ -141,8 +181,7 @@ class Game:
         square_idx = height_idx * ROWS + width_idx
         return square_idx
 
-    def move_piece(self, from_sq, to_sq):
-        move_str = self.get_move_str(from_sq, to_sq)
+    def move_piece(self, move_str):
         self.last_move = move_str
         self.board.make_move(self.board.parse_move(move_str))
 
@@ -173,6 +212,7 @@ class Game:
         move_ = out.split('bestmove ')[-1]  # .strip()  # todo make this nicer
         move_ = move_.split(' ')[0]  # take the first word after bestmove
         move_ = move_.strip()
+        logging.info(f'Received move: {move_}')
         self.board.parse_move(move_)
         self.board.make_move(self.board.parse_move(move_))
         self.last_move = move_
@@ -188,7 +228,7 @@ class Game:
     def parse_isready_and_set_position(self, call_future):
         response = call_future.result()
         out = response.text
-        logging.info(out)
+        logging.info(f'Response to isready: {out}')
         assert 'readyok' in out
 
         # set position
@@ -285,11 +325,17 @@ class Game:
             self.canvas.blit(self.highlight_square, self.square_loc[self.clicked_square_idx])
 
     def draw_highlighted_squares(self):
+        drawn_squares = set()
         for move in self.highlighted_moves:
-            # todo here need to take into account promotions
-            to_sq = move[2:]  # the highlighted square is the destination square
+            to_sq = move[2:4]  # the highlighted square is the destination square
             sq = self.get_sq_from_str(to_sq)
-            self.canvas.blit(self.highlight_square, self.square_loc[sq])
+
+            # when there is a promotion, we are drawing a lot of squares
+            # one on top of each other because the moves are the same except for
+            # what the promotion piece is
+            if sq not in drawn_squares:
+                drawn_squares.add(sq)
+                self.canvas.blit(self.highlight_square, self.square_loc[sq])
 
     def draw_highlighted_move(self):
         if self.last_move:
@@ -297,6 +343,39 @@ class Game:
             from_sq, to_sq = self.get_sq_from_str(from_sq_str), self.get_sq_from_str(to_sq_str)
             self.canvas.blit(self.highlight_move_square, self.square_loc[from_sq])
             self.canvas.blit(self.highlight_move_square, self.square_loc[to_sq])
+
+    def draw_promotion_moves(self):
+        if self.promotion_moves:
+            if self.user_side == WHITE:
+                promotion_pieces = [WHITE_QUEEN, WHITE_ROOK, WHITE_BISHOP, WHITE_KNIGHT]
+            else:
+                row_increment = -ROWS
+                promotion_pieces = [BLACK_QUEEN, BLACK_ROOK, BLACK_BISHOP, BLACK_KNIGHT]
+
+            move = self.promotion_moves[0]  # take one of the moves to compute the to_sq
+            to_sq = self.get_sq_from_str(move[2:4])  # destination slice
+            starting_square = to_sq
+
+            # row increment is used to determine if to put promotion options from bottom up or top down
+            # it depends on which part of the board the promotion is taking place
+            row_increment = ROWS
+            if starting_square + ROWS >= BOARD_SIZE:
+                row_increment = -ROWS
+
+            # find the squares on which to put the promotion options
+            image_squares = [starting_square + idx*row_increment for idx, _ in enumerate(promotion_pieces)]
+
+            self.promotion_choices = {}  # used to store which sq indicates which promotion option
+
+            # iterate over all promotion options and blit them vertically starting from the destination square
+            # Make sure to blit the background as opaque and center the pieces inside the squares
+            for piece, sq, move in zip(promotion_pieces, image_squares, self.promotion_moves):
+                self.promotion_choices[sq] = move  # save promotion move to the drawn promotion option
+                w, h = self.square_loc[sq]
+                image_w, image_h = IMAGE_SIZES[piece]
+                padding_w, padding_h = (SQUARE_SIZE - image_w) // 2, (SQUARE_SIZE - image_h) // 2
+                self.blit_alpha(self.black_square, self.square_loc[sq], opacity=170)
+                self.canvas.blit(self.piece_images[piece], (w + padding_w, h + padding_h))
 
     def draw_sq_in_check(self):
         if self.in_check_sq:

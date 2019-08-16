@@ -167,10 +167,10 @@ class Game:
         main_menu.add_option('Settings', settings_menu)
         main_menu.add_option('Quit', pygameMenu.events.EXIT)
 
-        main_menu.set_fps(fps=10)
+        main_menu.set_fps(fps=MENU_FPS)
 
         while True:
-            self.clock.tick(10)
+            self.clock.tick(MENU_FPS)
 
             # Application events
             events = pygame.event.get()

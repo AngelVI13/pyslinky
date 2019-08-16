@@ -1,13 +1,16 @@
 from lib.constants import *
 
-DEFAULT_CANVAS_WIDTH = 8*64  # 800
-DEFAULT_CANVAS_HEIGHT = 8*64  # 600
 SQUARE_SIZE = 64
 ROWS = 8
 BOARD_SIZE = ROWS * ROWS
+DEFAULT_CANVAS_WIDTH = ROWS * SQUARE_SIZE
+DEFAULT_CANVAS_HEIGHT = ROWS * SQUARE_SIZE
 
+# in pixels, corresponding from top left edge of square (based on 64x64pixel square)
 PAWN_PADDING_LEFT = 8
 PAWN_PADDING_TOP = 3
+
+MENU_FPS = 10
 
 FILE_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
 FILE_INT = {v: k for k, v in FILE_CHAR.items()}  # inverting above dict so we can get int from char

@@ -12,6 +12,21 @@ PAWN_PADDING_TOP = 3
 FILE_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
 FILE_INT = {v: k for k, v in FILE_CHAR.items()}  # inverting above dict so we can get int from char
 
+# the second elements of the tuples are the duration in milliseconds for which the engine is allowed to
+# think before making a move
+DIFFICULTY_SETTINGS = [
+    ('1', '500'),
+    ('2', '800'),
+    ('3', '1000'),
+    ('4', '1200'),
+    ('5', '1500'),
+    ('6', '1800'),
+    ('7', '2000'),
+    ('8', '2500'),
+    ('9', '3000'),
+    ('10', '5000')
+]
+
 IMAGE_PATHS = {
     BLACK_PAWN: 'assets/b_pawn_png_128px.png',
     WHITE_PAWN: 'assets/w_pawn_png_128px.png',

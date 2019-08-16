@@ -1,4 +1,5 @@
-import subprocess
+import sys
+import pygameMenu
 
 import grpc
 import pygame
@@ -24,9 +25,9 @@ class Game:
 
         # --- Board related vars
         self.board = Board()
-        self.board.parse_fen(START_FEN)
-        # fen = 'rnbqkbnr/p1pppppp/8/2P5/8/2N1P3/1p1P1PPP/R1BQKBNR b KQkq - 0 5'
-        # self.board.parse_fen(fen)
+        # self.board.parse_fen(START_FEN)
+        fen = '3k4/8/8/3K4/8/8/1Q6/8 w --'
+        self.board.parse_fen(fen)
         self.move_history = []
         # --- Engine process
         channel = grpc.insecure_channel('localhost:50051')
@@ -57,9 +58,9 @@ class Game:
 
         self.piece_images = self.load_assets()
 
-        self.user_side = BLACK
-        # self.fen = 'rnbqkbnr/p1pppppp/8/2P5/8/2N1P3/1p1P1PPP/R1BQKBNR b KQkq - 0 5'  # ''
-        self.fen = ''
+        self.user_side = WHITE
+        self.fen = '3k4/8/8/3K4/8/8/1Q6/8 w - -'
+        # self.fen = ''
         self.last_move = ''
         self.in_check_sq = None
         self.engine_triggered = False
@@ -100,12 +101,99 @@ class Game:
         call_future = self.stub.ExecuteEngineCommand.future(message)
         call_future.add_done_callback(self.parse_engine_info)
 
+    def menu_background(self):
+        self.canvas.fill(pygame.Color('black'))
+
+    def menu(self):
+        # Main menu
+        main_menu = pygameMenu.Menu(self.canvas, bgfun=self.menu_background,
+                                    font=pygameMenu.font.FONT_BEBAS, title="Slinky",
+                                    font_color=(0, 0, 0),
+                                    font_size=30,
+                                    menu_alpha=100,
+                                    menu_color=(0x7c, 0x4c, 0x3e),
+                                    menu_height=self.screen_height,
+                                    menu_width=self.screen_width,
+                                    onclose=pygameMenu.events.DISABLE_CLOSE,
+                                    option_shadow=False,
+                                    window_height=self.screen_height,
+                                    window_width=self.screen_width
+                                    )  # -> Menu object
+
+        # Settings menu
+        settings_menu = pygameMenu.Menu(self.canvas,
+                                        bgfun=self.menu_background,
+                                        color_selected=(255, 255, 255),
+                                        font=pygameMenu.font.FONT_HELVETICA,
+                                        font_color=(0, 0, 0),
+                                        font_size=25,
+                                        font_size_title=50,
+                                        menu_alpha=100,
+                                        menu_color=(0x7c, 0x4c, 0x3e),
+                                        menu_height=self.screen_height,
+                                        menu_width=self.screen_width,
+                                        onclose=pygameMenu.events.DISABLE_CLOSE,
+                                        title='Settings',
+                                        widget_alignment=pygameMenu.locals.ALIGN_LEFT,
+                                        window_height=self.screen_height,
+                                        window_width=self.screen_width
+                                        )
+
+        # Add text inputs with different configurations
+        settings_menu.add_text_input('Player 1: ', default='<Name>', textinput_id='player_1')
+        settings_menu.add_text_input('Player 2: ', default='<Name>', textinput_id='player_2')
+        settings_menu.add_text_input('FEN: ', default='<optional>', textinput_id='fen_text')
+        # Create selector with difficulty options
+        settings_menu.add_selector('Select difficulty (1-10)',
+                                   DIFFICULTY_SETTINGS,
+                                   selector_id='difficulty',
+                                   default=5)
+
+        def data_fun():
+            """
+            Print data of the menu.
+            :return: None
+            """
+            print('Settings data:')
+            data = settings_menu.get_input_data()
+            for k in data.keys():
+                print(u'\t{0}\t=>\t{1}'.format(k, data[k]))
+
+        settings_menu.add_option('Store data', data_fun)  # Call function
+        settings_menu.add_option('Return to main menu', pygameMenu.events.BACK,
+                                 align=pygameMenu.locals.ALIGN_CENTER)
+
+        main_menu.add_option('Play', self.run)
+        main_menu.add_option('Settings', settings_menu)
+        main_menu.add_option('Quit', pygameMenu.events.EXIT)
+
+        main_menu.set_fps(fps=10)
+
+        while True:
+            self.clock.tick(10)
+
+            # Application events
+            events = pygame.event.get()
+            for event in events:
+                if event.type == pygame.QUIT:
+                    exit()
+
+            # Main menu
+            main_menu.mainloop(events)
+
+            # Flip surface
+            pygame.display.flip()
+
     def run(self):
         done = False
         while not done:
+            # check for game result:
+            if self.board.get_result(self.board.playerJustMoved):
+                self.game_over()
+
             # If it is the opposite side's turn and the engine hasn't been triggered already
             # and the engine has been initialized i.e. engine_info is available
-            if self.user_side != self.board.side and self.engine_triggered is False and self.engine_info:
+            if self.user_side ^ 1 == self.board.side and self.engine_triggered is False and self.engine_info:
                 self.make_engine_move()
                 self.engine_triggered = True
 
@@ -128,6 +216,29 @@ class Game:
             self.draw_promotion_moves()
 
             pygame.display.flip()
+
+            self.clock.tick(10)  # 10 FPS
+
+    def game_over(self):
+        for i in self.square_loc:
+            self.blit_alpha(self.black_square, self.square_loc[i], opacity=100)
+
+        self.display_text("Game Over", font_type="sans", font_size=50, canvas=self.canvas,
+                          location=(self.screen_width // 2 - 110, self.screen_height // 2 - 50), bold=True)
+
+        pygame.display.flip()
+
+        done = False
+        while not done:
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    sys.exit()
+
+                if event.type == pygame.MOUSEBUTTONUP:
+                    # if self.user_side == self.board.side:
+                    #     self.handle_mouse_click(event.pos)
+                    pass
 
             self.clock.tick(10)  # 10 FPS
 
@@ -234,6 +345,7 @@ class Game:
         # set position
         command = self.get_position_string()
         message = protos.adapter_pb2.Request(text=command, timeout=1)
+        logging.info(f'Sending: {message}')
         call_future = self.stub.ExecuteEngineCommand.future(message)  # no response is expected
         call_future.add_done_callback(self.send_go_command)
 
@@ -245,7 +357,8 @@ class Game:
 
         # set parameters and start engine search
         # 4 seconds timeout for a request that takes 3 seconds
-        message = protos.adapter_pb2.Request(text="go movetime 3000\n", timeout=2)
+        message = protos.adapter_pb2.Request(text="go movetime 1500\n", timeout=2)
+        logging.info(f'Sending: {message}')
         call_future = self.stub.ExecuteEngineCommand.future(message)
         call_future.add_done_callback(self.parse_engine_response)
 
@@ -254,18 +367,9 @@ class Game:
         the position to search and then sends GO command and parses response of engine analysis.
         """
         message = protos.adapter_pb2.Request(text="isready\n", timeout=1)
+        logging.info(f'Sending: {message}')
         call_future = self.stub.ExecuteEngineCommand.future(message)
         call_future.add_done_callback(self.parse_isready_and_set_position)
-
-    def exec_engine_request(self, commands):
-        command = "slinky.exe"
-        position = self.get_position_string()
-        parameters = ', '.join([f'{position}', *commands])
-        logging.info('Exec req params: {}'.format(parameters))
-        engine = subprocess.run([command, parameters], stdout=subprocess.PIPE)
-        output = engine.stdout.decode('utf-8')
-        logging.info(output)
-        return output
 
     def get_allowed_moves(self, sq):
         def is_start_square(move_):
@@ -409,4 +513,4 @@ class Game:
 if __name__ == '__main__':
     pygame.init()
     game = Game(DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT)
-    game.run()
+    game.menu()

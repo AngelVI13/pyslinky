@@ -1,8 +1,4 @@
 import subprocess
-import time
-from functools import partial
-import threading
-from queue import Queue, Empty
 
 import grpc
 import pygame
@@ -10,48 +6,11 @@ from defines import *
 import protos.adapter_pb2
 import protos.adapter_pb2_grpc
 
-
-
 from lib.board import Board
 
 import logging
+
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-
-def get_string_between_markers(text, start_marker, end_marker):
-    # find start string
-    start_idx = text.find(start_marker)
-    # remove everything preceding it from text
-    text = text[start_idx + len(start_marker):]
-
-    # find end of string
-    end_idx = text.find(end_marker)
-    # remove everything after it from text
-    result = text[:end_idx]
-    # clean up leading and trailing whitespaces
-    result = result.strip()
-    return result
-
-
-class EngineResponse:
-    # todo end strings are always EOL -> don't need to define them separately
-    # todo 2. Instead of having small callbacks just parse output in a dict and return that ?
-    fen_start_str = 'FEN: '
-    fen_end_str = '\n'
-
-    move_start_str = 'Engine move is '
-    move_end_str = '\n'
-
-    king_sq_start_str = 'KingSq: '
-    king_sq_end_str = '\n'
-
-    in_check_start_str = 'InCheck: '
-    in_check_end_str = '\n'
-
-    extract_fen = partial(get_string_between_markers, start_marker=fen_start_str, end_marker=fen_end_str)
-    extract_move = partial(get_string_between_markers, start_marker=move_start_str, end_marker=move_end_str)
-    extract_king_sq = partial(get_string_between_markers, start_marker=king_sq_start_str, end_marker=king_sq_end_str)
-    extract_in_check = partial(get_string_between_markers, start_marker=in_check_start_str, end_marker=in_check_end_str)
 
 
 class Game:
@@ -70,7 +29,7 @@ class Game:
         # --- Engine process
         channel = grpc.insecure_channel('localhost:50051')
         self.stub = protos.adapter_pb2_grpc.AdapterStub(channel)
-        print(self.init_engine_uci())  # todo use info from here to display engine info
+        self.init_engine_uci()
         # --
 
         self.highlighted_moves = []
@@ -94,6 +53,7 @@ class Game:
         self.fen = ''
         self.last_move = ''
         self.in_check_sq = None
+        self.engine_triggered = False
 
     @staticmethod
     def load_assets():
@@ -102,10 +62,9 @@ class Game:
         # scale them
         return {k: pygame.transform.scale(v, IMAGE_SIZES[k]) for k, v in d.items()}
 
-    def init_engine_uci(self):
-        message = protos.adapter_pb2.Request(text="uci\n", timeout=1)
-        response = self.stub.ExecuteEngineCommand(message)
-
+    @staticmethod
+    def parse_engine_info(call_future):  # todo use info from here to display engine info
+        response = call_future.result()
         out = response.text
 
         engine_info = {}
@@ -117,31 +76,21 @@ class Game:
                 _, author = line.split('id author', maxsplit=1)
                 engine_info['author'] = author.strip()
 
+        print(engine_info)
         return engine_info
 
-    @staticmethod
-    def output_reader(proc, out_queue: Queue, in_queue: Queue):
-        while True:
-            line = proc.stdout.readline()
-            out_queue.put(line.decode('utf-8'))
-
-            try:
-                val = in_queue.get()
-            except Empty:
-                continue
-            else:
-                if val is True:
-                    break  # terminate thread
-        # for line in iter(proc.stdout.readline, b''):
-        #     queue.put(line.decode('utf-8'))
+    def init_engine_uci(self):
+        message = protos.adapter_pb2.Request(text="uci\n", timeout=1)
+        call_future = self.stub.ExecuteEngineCommand.future(message)
+        call_future.add_done_callback(self.parse_engine_info)
 
     def run(self):
 
         done = False
         while not done:
-            if self.user_side != self.board.side:
-                time.sleep(2)
+            if self.user_side != self.board.side and self.engine_triggered is False:
                 self.make_engine_move()
+                self.engine_triggered = True
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -189,7 +138,7 @@ class Game:
         width, height = coords
         width_idx = width // SQUARE_SIZE  # todo might need to add offset or sth here later
         height_idx = height // SQUARE_SIZE
-        square_idx = height_idx*ROWS + width_idx
+        square_idx = height_idx * ROWS + width_idx
         return square_idx
 
     def move_piece(self, from_sq, to_sq):
@@ -217,45 +166,11 @@ class Game:
             command = ' '.join([command, 'moves', *self.move_history])
         return ''.join([command, '\n'])
 
-    # todo move to board side
-    # def parse_fen(self, fen):
-    #     fen_parts = fen.split()
-    #     piece_layouts, *_ = fen_parts
-    #
-    #     piece_layouts = piece_layouts.split('/')
-    #     flipped = ''.join(piece_layouts)
-    #
-    #     char_size = 1
-    #     index = 0
-    #     while flipped:
-    #         piece, flipped = flipped[:char_size], flipped[char_size:]
-    #         if piece in PIECE_MAP:
-    #             self.pos[index] = PIECE_MAP[piece]
-    #             index += 1
-    #         else:  # there is a digit
-    #             for _ in range(int(piece)):
-    #                 self.pos[index] = EMPTY
-    #                 index += 1
-
-    def make_engine_move(self):
-        message = protos.adapter_pb2.Request(text="isready\n", timeout=1)
-        response = self.stub.ExecuteEngineCommand(message)
-
-        out = response.text
-        assert 'readyok' in out
-
-        # set position
-        command = self.get_position_string()
-        message = protos.adapter_pb2.Request(text=command, timeout=1)
-        _ = self.stub.ExecuteEngineCommand(message)  # no response is expected
-
-        # set parameters and start engine search
-        # 4 seconds timeout for a request that takes 3 seconds
-        message = protos.adapter_pb2.Request(text="go movetime 3000\n", timeout=2)
-        response = self.stub.ExecuteEngineCommand(message)
+    def parse_engine_response(self, call_future):
+        response = call_future.result()
         out = response.text
         logging.info(out)
-        move_ = out.split('bestmove ')[-1]   # .strip()  # todo make this nicer
+        move_ = out.split('bestmove ')[-1]  # .strip()  # todo make this nicer
         move_ = move_.split(' ')[0]  # take the first word after bestmove
         move_ = move_.strip()
         self.board.parse_move(move_)
@@ -268,22 +183,39 @@ class Game:
         sq = self.get_draw_square(self.board.kingSquare[self.board.side])
         self.in_check_sq = sq if in_check else None
 
-    def exec_engine_command(self, command):
-        # todo use some gRPC to a Go service that executes engine commands
-        in_queue = Queue()  # move this somewhere else -> don't create a queue for every thread
-        t = threading.Thread(target=self.output_reader, args=(self.engine_process, self.engine_out_queue, in_queue, ))
-        t.start()
+        self.engine_triggered = False  # reset to default value
 
-        self.engine_process.stdin.write(command)  # UCI start command
-        self.engine_process.stdin.flush()
+    def parse_isready_and_set_position(self, call_future):
+        response = call_future.result()
+        out = response.text
+        logging.info(out)
+        assert 'readyok' in out
 
-        time.sleep(3)
-        out = []
-        while not self.engine_out_queue.empty():
-            out.append(self.engine_out_queue.get())
+        # set position
+        command = self.get_position_string()
+        message = protos.adapter_pb2.Request(text=command, timeout=1)
+        call_future = self.stub.ExecuteEngineCommand.future(message)  # no response is expected
+        call_future.add_done_callback(self.send_go_command)
 
-        in_queue.put(True)  # signal to thread to end todo needed ?
-        return out
+    def send_go_command(self, _):
+        """This method is called from parse_isready_and_set_position. Setting position command
+        does not return any response so here we simply send GO command to engine with
+        predefined parameters.
+        """
+
+        # set parameters and start engine search
+        # 4 seconds timeout for a request that takes 3 seconds
+        message = protos.adapter_pb2.Request(text="go movetime 3000\n", timeout=2)
+        call_future = self.stub.ExecuteEngineCommand.future(message)
+        call_future.add_done_callback(self.parse_engine_response)
+
+    def make_engine_move(self):
+        """This starts a callback chain that asks engine if it is ready then sends the engine
+        the position to search and then sends GO command and parses response of engine analysis.
+        """
+        message = protos.adapter_pb2.Request(text="isready\n", timeout=1)
+        call_future = self.stub.ExecuteEngineCommand.future(message)
+        call_future.add_done_callback(self.parse_isready_and_set_position)
 
     def exec_engine_request(self, commands):
         command = "slinky.exe"

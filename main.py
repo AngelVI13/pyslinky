@@ -349,7 +349,6 @@ class Game:
             if self.user_side == WHITE:
                 promotion_pieces = [WHITE_QUEEN, WHITE_ROOK, WHITE_BISHOP, WHITE_KNIGHT]
             else:
-                row_increment = -ROWS
                 promotion_pieces = [BLACK_QUEEN, BLACK_ROOK, BLACK_BISHOP, BLACK_KNIGHT]
 
             move = self.promotion_moves[0]  # take one of the moves to compute the to_sq

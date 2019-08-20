@@ -16,6 +16,10 @@ MENU_FPS = 10
 FILE_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
 FILE_INT = {v: k for k, v in FILE_CHAR.items()}  # inverting above dict so we can get int from char
 
+BLACK_COLOR = (0x00, 0x00, 0x00)
+BROWN_COLOR = (0x7c, 0x4c, 0x3e)
+LIGHT_BROWN_COLOR = (0x98, 0x76, 0x6c)
+
 # the second elements of the tuples are the duration in milliseconds for which the engine is allowed to
 # think before making a move
 DIFFICULTY_SETTINGS = [
@@ -29,6 +33,11 @@ DIFFICULTY_SETTINGS = [
     ('8', '2500'),
     ('9', '3000'),
     ('10', '5000')
+]
+
+ENGINE_SIDE_SETTINGS = [
+    ('White', WHITE),
+    ('Black', BLACK),
 ]
 
 IMAGE_PATHS = {

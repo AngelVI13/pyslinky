@@ -121,9 +121,13 @@ class Game:
 
             self.board.parse_fen(self.fen)
 
-            setting, setting_idx = settings['difficulty']
-            setting, movetime = DIFFICULTY_SETTINGS[setting_idx]
+            _, setting_idx = settings['difficulty']
+            _, movetime = DIFFICULTY_SETTINGS[setting_idx]
             self.movetime = movetime
+
+            _, side_idx = settings['engine_side']
+            _, engine_side = ENGINE_SIDE_SETTINGS[side_idx]
+            self.user_side = engine_side ^ 1  # the user side is the opposite of the engine
             self.user_name = settings['player_name']
 
         self.run()
@@ -133,6 +137,7 @@ class Game:
         while not done:
             # check for game result:
             if self.board.get_result(self.board.playerJustMoved):
+                self.draw_board()  # draw last board state before game over
                 return self.game_over()  # return back to main menu
 
             # If it is the opposite side's turn and the engine hasn't been triggered already
@@ -149,18 +154,22 @@ class Game:
                     if self.user_side == self.board.side:
                         self.handle_mouse_click(event.pos)
 
-            self.canvas.fill(pygame.Color('black'))
-            self.draw_info_banner()
-            self.draw_squares()
-            self.draw_clicked_square()  # highlight clicked sq
-            self.draw_highlighted_squares()  # available moves for square
-            self.draw_highlighted_move()  # draw last made move
-            self.draw_sq_in_check()  # draw square in check
-            self.draw_pos()
-            self.draw_promotion_moves()
+            self.draw_board()
 
             pygame.display.flip()
             self.clock.tick(10)  # 10 FPS
+
+    def draw_board(self):
+        """Draws all board related information: squares, info banner, pieces etc"""
+        self.canvas.fill(pygame.Color('black'))
+        self.draw_info_banner()
+        self.draw_squares()
+        self.draw_clicked_square()  # highlight clicked sq
+        self.draw_highlighted_move()  # draw last made move
+        self.draw_highlighted_squares()  # available moves for square
+        self.draw_sq_in_check()  # draw square in check
+        self.draw_pos()
+        self.draw_promotion_moves()
 
     def game_over(self):
         for i in self.square_loc:
@@ -323,20 +332,20 @@ class Game:
         banner_y = ROWS * SQUARE_SIZE
 
         # draw banner background
-        colour = (0x7c, 0x4c, 0x3e)
-        temp = pygame.Surface((self.screen_width, INFO_HEIGHT))
-        temp.fill(color=colour)
-        self.canvas.blit(temp, (0, banner_y))
+        colour = BROWN_COLOR
+        banner = pygame.Surface((self.screen_width, INFO_HEIGHT))
+        banner.fill(color=colour)
+        self.canvas.blit(banner, (0, banner_y))
 
         separator_thickness = 2  # 2px thickness of separators
         # draw separator from game canvas to banner canvas
         sep = pygame.Surface((self.screen_width, separator_thickness))
-        sep.fill(color=(0x00, 0x00, 0x00))
+        sep.fill(color=BLACK_COLOR)
         self.canvas.blit(sep, (0, banner_y))
 
         # vertical separator
         vsep = pygame.Surface((separator_thickness, INFO_HEIGHT))
-        vsep.fill(color=(0x00, 0x00, 0x00))
+        vsep.fill(color=BLACK_COLOR)
         self.canvas.blit(vsep, (self.screen_width // 2 - separator_thickness // 2, banner_y))
 
         # draw side to move highlight
@@ -346,21 +355,22 @@ class Game:
         else:
             highlight_location = (self.screen_width // 2 + separator_thickness // 2, banner_y + separator_thickness)
 
-        highlight_colour = (0x98, 0x76, 0x6c)  # todo move these colours to defines
+        highlight_colour = LIGHT_BROWN_COLOR
         side_highlight = pygame.Surface(highlight_size)
         side_highlight.fill(color=highlight_colour)
         self.canvas.blit(side_highlight, highlight_location)
 
-        # todo add option for player to play with black and in this case print player name in correct position
         # add player names
         x_padding = y_padding = 10
         white_location = (x_padding, banner_y + y_padding)
         black_location = (self.screen_width // 2 + separator_thickness // 2 + x_padding, banner_y + y_padding)
+        white_name = self.user_name if self.user_side == WHITE else self.engine_info['name']
+        black_name = self.user_name if self.user_side == BLACK else self.engine_info['name']
 
-        self.helpers.display_text(text=self.user_name, font_type="sans", font_size=30, canvas=self.canvas,
+        self.helpers.display_text(text=white_name, font_type="sans", font_size=30, canvas=self.canvas,
                                   location=white_location, bold=True, color='white')
 
-        self.helpers.display_text(text=self.engine_info['name'], font_type="sans", font_size=30, canvas=self.canvas,
+        self.helpers.display_text(text=black_name, font_type="sans", font_size=30, canvas=self.canvas,
                                   location=black_location, bold=True, color='black')
 
     def draw_squares(self):

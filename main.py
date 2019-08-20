@@ -61,6 +61,10 @@ class MainMenu:
                                         DIFFICULTY_SETTINGS,
                                         selector_id='difficulty',
                                         default=4)
+        self.settings_menu.add_selector('Engine side',
+                                        ENGINE_SIDE_SETTINGS,
+                                        selector_id='engine_side',
+                                        default=1)
 
         self.settings_menu.add_option('Store data', self.data_fun)  # Call function
         self.settings_menu.add_option('Return to main menu', pygameMenu.events.BACK,

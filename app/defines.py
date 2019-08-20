@@ -11,7 +11,7 @@ DEFAULT_CANVAS_HEIGHT = ROWS * SQUARE_SIZE + INFO_HEIGHT
 PAWN_PADDING_LEFT = 8
 PAWN_PADDING_TOP = 3
 
-MENU_FPS = 10
+MENU_FPS = 20
 
 FILE_CHAR = dict(zip(range(ROWS), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
 FILE_INT = {v: k for k, v in FILE_CHAR.items()}  # inverting above dict so we can get int from char

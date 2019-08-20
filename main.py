@@ -3,8 +3,8 @@ import logging
 import pygame
 import pygameMenu
 
-from defines import *
-from gui import Game
+from app.defines import *
+from app.gui import Game
 
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)

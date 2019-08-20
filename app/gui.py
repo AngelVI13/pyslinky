@@ -6,7 +6,8 @@ import pygame
 import protos.adapter_pb2
 import protos.adapter_pb2_grpc
 
-from defines import *
+from app.defines import *
+from app.helpers import Helpers
 from lib.board import Board
 
 
@@ -20,13 +21,13 @@ class Game:
         self.screen_height = screen_height
         self.clock = pygame.time.Clock()
 
-        self.square_loc = self.compute_square_locations()
+        self.helpers = Helpers()  # class defines helper functions
+
+        self.square_loc = self.helpers.compute_square_locations()
 
         # --- Board related vars
         self.board = Board()
-        self.board.parse_fen(START_FEN)
-        # fen = '3k4/8/8/3K4/8/8/1Q6/8 w --'
-        # self.board.parse_fen(fen)
+        self.board.parse_fen(START_FEN)  # mate in two '3k4/8/8/3K4/8/8/1Q6/8 w --'
         self.move_history = []
         # --- Engine process
         channel = grpc.insecure_channel('localhost:50051')
@@ -56,10 +57,9 @@ class Game:
         self.highlight_square = highlight_square
         self.highlight_move_square = highlight_move_square
 
-        self.piece_images = self.load_assets()
+        self.piece_images = self.helpers.load_assets()
 
         self.user_side = WHITE
-        # self.fen = '3k4/8/8/3K4/8/8/1Q6/8 w - -'
         self.fen = ''
         self.last_move = ''
         self.in_check_sq = None
@@ -71,11 +71,7 @@ class Game:
         self.move_history = []
         self.movetime = '1500'
 
-        self.highlighted_moves = []
-        self.promotion_moves = []
-        # after promotion moves are drawn, this stores info about where each promotion move is drawn on the board
-        self.promotion_choices = {}
-        self.clicked_square_idx = None
+        self.reset_highlighted_moves()
 
         self.user_side = WHITE
         self.fen = ''
@@ -83,21 +79,11 @@ class Game:
         self.in_check_sq = None
         self.engine_triggered = False
 
-    def blit_alpha(self, source, location, opacity):
-        x = location[0]
-        y = location[1]
-        temp = pygame.Surface((source.get_width(), source.get_height())).convert()
-        temp.blit(self.canvas, (-x, -y))
-        temp.blit(source, (0, 0))
-        temp.set_alpha(opacity)
-        self.canvas.blit(temp, location)
-
-    @staticmethod
-    def load_assets():
-        # load all images
-        d = {k: pygame.image.load(v) for k, v in IMAGE_PATHS.items()}
-        # scale them
-        return {k: pygame.transform.scale(v, IMAGE_SIZES[k]) for k, v in d.items()}
+    def reset_highlighted_moves(self):  # Resets all highlighted squares
+        self.clicked_square_idx = None
+        self.highlighted_moves = []
+        self.promotion_moves = []
+        self.promotion_choices = {}
 
     def parse_engine_info(self, call_future):  # todo use info from here to display engine info
         response = call_future.result()
@@ -164,7 +150,6 @@ class Game:
                         self.handle_mouse_click(event.pos)
 
             self.canvas.fill(pygame.Color('black'))
-
             self.draw_squares()
             self.draw_clicked_square()  # highlight clicked sq
             self.draw_highlighted_squares()  # available moves for square
@@ -174,23 +159,21 @@ class Game:
             self.draw_promotion_moves()
 
             pygame.display.flip()
-
             self.clock.tick(10)  # 10 FPS
 
     def game_over(self):
         for i in self.square_loc:
-            self.blit_alpha(self.black_square, self.square_loc[i], opacity=100)
+            self.helpers.blit_alpha(self.canvas, self.black_square, self.square_loc[i], opacity=100)
 
-        self.display_text("Game Over", font_type="sans", font_size=50, canvas=self.canvas,
-                          location=(self.screen_width // 2 - 110, self.screen_height // 2 - 50), bold=True)
-        self.display_text("Click anywhere to go back to main menu", font_type="sans", font_size=20, canvas=self.canvas,
-                          location=(self.screen_width // 2 - 160, self.screen_height // 2 + 20), bold=True)
-
+        self.helpers.display_text("Game Over", font_type="sans", font_size=50, canvas=self.canvas,
+                                  location=(self.screen_width // 2 - 110, self.screen_height // 2 - 50), bold=True)
+        self.helpers.display_text("Click anywhere to go back to main menu", font_type="sans", font_size=20,
+                                  canvas=self.canvas, location=(self.screen_width // 2 - 160,
+                                                                self.screen_height // 2 + 20), bold=True)
         pygame.display.flip()
 
         done = False
         while not done:
-
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     sys.exit()
@@ -201,23 +184,21 @@ class Game:
             self.clock.tick(10)  # 10 FPS
 
     def handle_mouse_click(self, pos):
-        sq_idx = self.get_square_under_mouse(pos)
+        sq_idx = self.helpers.get_square_under_mouse(pos)
 
         if self.promotion_moves and sq_idx in self.promotion_choices:
             # if user clicked on the available promotion options
             self.move_piece(self.promotion_choices[sq_idx])
-            self.clicked_square_idx = None  # todo add reset method for all these vars
-            self.highlighted_moves = []
-            self.promotion_moves = []
-            self.promotion_choices = {}
+            self.reset_highlighted_moves()
 
         if self.clicked_square_idx is not None and sq_idx != self.clicked_square_idx:
             # get all moves where selected piece can move to and check if
             # sq_idx is one of them
-            to_sq_str = self.get_sq_str(sq_idx)
-            moves_for_square = list(filter(lambda move: to_sq_str in move[2:4], self.highlighted_moves))
+            to_sq_str = self.helpers.get_sq_str(sq_idx)
+            moves_for_square = list(filter(lambda move: to_sq_str in move[self.helpers.to_square],
+                                           self.highlighted_moves))
             if len(moves_for_square) == 1:
-                move_str = self.get_move_str(self.clicked_square_idx, sq_idx)
+                move_str = self.helpers.get_move_str(self.clicked_square_idx, sq_idx)
                 self.move_piece(move_str)
                 self.clicked_square_idx = None
                 self.highlighted_moves = []
@@ -227,28 +208,14 @@ class Game:
                 self.promotion_moves = moves_for_square
             else:
                 # selected square is not one of the available moves -> reset clicking options
-                self.clicked_square_idx = None
-                self.highlighted_moves = []
-                self.promotion_moves = []
-                self.promotion_choices = {}
+                self.reset_highlighted_moves()
         elif self.clicked_square_idx is not None and sq_idx == self.clicked_square_idx:
             # if clicked on same square disable highlighting
-            self.clicked_square_idx = None
-            self.highlighted_moves = []
-            self.promotion_moves = []
-            self.promotion_choices = {}
+            self.reset_highlighted_moves()
         else:
             self.highlighted_moves = self.get_allowed_moves(sq_idx)
             if self.highlighted_moves:  # I have allowed moves for this square -> set it as clicked
                 self.clicked_square_idx = sq_idx
-
-    @staticmethod
-    def get_square_under_mouse(coords):
-        width, height = coords
-        width_idx = width // SQUARE_SIZE  # todo might need to add offset or sth here later
-        height_idx = height // SQUARE_SIZE
-        square_idx = height_idx * ROWS + width_idx
-        return square_idx
 
     def move_piece(self, move_str):
         self.last_move = move_str
@@ -278,7 +245,7 @@ class Game:
         response = call_future.result()
         out = response.text
         logging.info(out)
-        move_ = out.split('bestmove ')[-1]  # .strip()  # todo make this nicer
+        move_ = out.split('bestmove ')[-1]  # todo make this nicer
         move_ = move_.split(' ')[0]  # take the first word after bestmove
         move_ = move_.strip()
         logging.info(f'Received move: {move_}')
@@ -332,7 +299,7 @@ class Game:
     def get_allowed_moves(self, sq):
         def is_start_square(move_):
             # check if sq matches the from part of move notation
-            return self.get_sq_str(sq) in move_[:2]
+            return self.helpers.get_sq_str(sq) in move_[self.helpers.from_square]
 
         moves = self.board.get_moves()
         # convert moves to string
@@ -340,20 +307,6 @@ class Game:
         # filter out moves that don't start with the same start square
         moves_for_square = list(filter(is_start_square, moves))
         return moves_for_square
-
-    @classmethod
-    def get_move_str(cls, from_sq, to_sq):
-        return f'{cls.get_sq_str(from_sq)}{cls.get_sq_str(to_sq)}'
-
-    def get_move_from_str(self, move_str):  # todo promotion moves
-        from_sq = move_str[:2]
-        to_sq = move_str[2:]
-        return self.get_sq_from_str(from_sq), self.get_sq_from_str(to_sq)
-
-    @staticmethod
-    def get_sq_str(sq):
-        row, col = divmod(sq, ROWS)
-        return f'{FILE_CHAR[col]}{ROWS - row}'  # subtraction is needed since index 0 is a8 and not a1
 
     def get_draw_square(self, sq: int) -> int:
         """Convert a square from 120 board representation of chess logic
@@ -389,8 +342,8 @@ class Game:
     def draw_highlighted_squares(self):
         drawn_squares = set()
         for move in self.highlighted_moves:
-            to_sq = move[2:4]  # the highlighted square is the destination square
-            sq = self.get_sq_from_str(to_sq)
+            to_sq = move[self.helpers.to_square]  # the highlighted square is the destination square
+            sq = self.helpers.get_sq_from_str(to_sq)
 
             # when there is a promotion, we are drawing a lot of squares
             # one on top of each other because the moves are the same except for
@@ -401,8 +354,8 @@ class Game:
 
     def draw_highlighted_move(self):
         if self.last_move:
-            from_sq_str, to_sq_str = self.last_move[:2], self.last_move[2:4]
-            from_sq, to_sq = self.get_sq_from_str(from_sq_str), self.get_sq_from_str(to_sq_str)
+            from_sq_str, to_sq_str = self.last_move[self.helpers.from_square], self.last_move[self.helpers.to_square]
+            from_sq, to_sq = self.helpers.get_sq_from_str(from_sq_str), self.helpers.get_sq_from_str(to_sq_str)
             self.canvas.blit(self.highlight_move_square, self.square_loc[from_sq])
             self.canvas.blit(self.highlight_move_square, self.square_loc[to_sq])
 
@@ -414,7 +367,7 @@ class Game:
                 promotion_pieces = [BLACK_QUEEN, BLACK_ROOK, BLACK_BISHOP, BLACK_KNIGHT]
 
             move = self.promotion_moves[0]  # take one of the moves to compute the to_sq
-            to_sq = self.get_sq_from_str(move[2:4])  # destination slice
+            to_sq = self.helpers.get_sq_from_str(move[self.helpers.to_square])  # destination slice
             starting_square = to_sq
 
             # row increment is used to determine if to put promotion options from bottom up or top down
@@ -435,37 +388,12 @@ class Game:
                 w, h = self.square_loc[sq]
                 image_w, image_h = IMAGE_SIZES[piece]
                 padding_w, padding_h = (SQUARE_SIZE - image_w) // 2, (SQUARE_SIZE - image_h) // 2
-                self.blit_alpha(self.black_square, self.square_loc[sq], opacity=170)
+                self.helpers.blit_alpha(self.canvas, self.black_square, self.square_loc[sq], opacity=170)
                 self.canvas.blit(self.piece_images[piece], (w + padding_w, h + padding_h))
 
     def draw_sq_in_check(self):
         if self.in_check_sq:
             self.canvas.blit(self.highlight_check_square, self.square_loc[self.in_check_sq])
-
-    @staticmethod
-    def get_sq_from_str(sq_str):
-        file, rank = sq_str
-        file, rank = FILE_INT[file], int(rank)
-        sq = (ROWS - rank) * ROWS + file
-        return sq
-
-    @staticmethod
-    def compute_square_locations():
-        square_loc = {}
-        for i in range(BOARD_SIZE):
-            row, col = divmod(i, ROWS)
-            square_loc[i] = (col * SQUARE_SIZE, row * SQUARE_SIZE)
-        return square_loc
-
-    @staticmethod
-    def display_text(text, font_type, font_size, canvas, location, bold=False, italic=False):
-        # SysFont(name, size, bold=False, italic=False) -> Font
-        font = pygame.font.SysFont(font_type, font_size, bold, italic)
-
-        # render(text, antialias, color, background=None) -> Surface
-        text_surface = font.render(text, True, pygame.Color('white'))
-
-        canvas.blit(text_surface, location)
 
 
 if __name__ == '__main__':

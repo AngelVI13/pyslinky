@@ -32,12 +32,12 @@ class Helpers:
         return square_loc
 
     @staticmethod
-    def display_text(text, font_type, font_size, canvas, location, bold=False, italic=False):
+    def display_text(text, font_type, font_size, canvas, location, bold=False, italic=False, color='white'):
         # SysFont(name, size, bold=False, italic=False) -> Font
         font = pygame.font.SysFont(font_type, font_size, bold, italic)
 
         # render(text, antialias, color, background=None) -> Surface
-        text_surface = font.render(text, True, pygame.Color('white'))
+        text_surface = font.render(text, True, pygame.Color(color))
 
         canvas.blit(text_surface, location)
 

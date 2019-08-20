@@ -3,8 +3,9 @@ from lib.constants import *
 SQUARE_SIZE = 64
 ROWS = 8
 BOARD_SIZE = ROWS * ROWS
+INFO_HEIGHT = 50
 DEFAULT_CANVAS_WIDTH = ROWS * SQUARE_SIZE
-DEFAULT_CANVAS_HEIGHT = ROWS * SQUARE_SIZE
+DEFAULT_CANVAS_HEIGHT = ROWS * SQUARE_SIZE + INFO_HEIGHT
 
 # in pixels, corresponding from top left edge of square (based on 64x64pixel square)
 PAWN_PADDING_LEFT = 8

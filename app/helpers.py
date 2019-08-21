@@ -24,11 +24,15 @@ class Helpers:
         return sq
 
     @staticmethod
-    def compute_square_locations():
+    def compute_square_locations(reversed_=False):
         square_loc = {}
         for i in range(BOARD_SIZE):
             row, col = divmod(i, ROWS)
-            square_loc[i] = (col * SQUARE_SIZE, row * SQUARE_SIZE)
+
+            if reversed_:
+                square_loc[BOARD_SIZE - i - 1] = (col * SQUARE_SIZE, row * SQUARE_SIZE)
+            else:
+                square_loc[i] = (col * SQUARE_SIZE, row * SQUARE_SIZE)
         return square_loc
 
     @staticmethod
@@ -42,12 +46,12 @@ class Helpers:
         canvas.blit(text_surface, location)
 
     @staticmethod
-    def get_square_under_mouse(coords):
+    def get_square_under_mouse(coords, reversed_):
         width, height = coords
         width_idx = width // SQUARE_SIZE  # todo might need to add offset or sth here later
         height_idx = height // SQUARE_SIZE
         square_idx = height_idx * ROWS + width_idx
-        return square_idx
+        return square_idx if not reversed_ else BOARD_SIZE - square_idx - 1
 
     @staticmethod
     def blit_alpha(canvas, source, location, opacity):

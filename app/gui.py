@@ -23,7 +23,9 @@ class Game:
 
         self.helpers = Helpers()  # class defines helper functions
 
-        self.square_loc = self.helpers.compute_square_locations()
+        # indicates if board should be drawn in reverse i.e. black is on the bottom of the screen
+        self.revesed_board = False
+        self.square_loc = self.helpers.compute_square_locations(self.revesed_board)
 
         # --- Board related vars
         self.board = Board()
@@ -128,6 +130,14 @@ class Game:
             _, side_idx = settings['engine_side']
             _, engine_side = ENGINE_SIDE_SETTINGS[side_idx]
             self.user_side = engine_side ^ 1  # the user side is the opposite of the engine
+
+            print(self.user_side)
+            if self.user_side == BLACK:
+                self.revesed_board = True  # show board from user perspective
+                self.square_loc = self.helpers.compute_square_locations(self.revesed_board)
+            else:
+                self.revesed_board = False
+
             self.user_name = settings['player_name']
 
         self.run()
@@ -180,6 +190,7 @@ class Game:
         self.helpers.display_text("Click anywhere to go back to main menu", font_type="sans", font_size=20,
                                   canvas=self.canvas, location=(self.screen_width // 2 - 160,
                                                                 self.screen_height // 2 + 20), bold=True)
+        # todo add info who won
         pygame.display.flip()
 
         done = False
@@ -191,10 +202,10 @@ class Game:
                 if event.type == pygame.MOUSEBUTTONUP:
                     return  # return back to main menu
 
-            self.clock.tick(10)  # 10 FPS
+            self.clock.tick(10)  # 10 FPS todo replace with const
 
     def handle_mouse_click(self, pos):
-        sq_idx = self.helpers.get_square_under_mouse(pos)
+        sq_idx = self.helpers.get_square_under_mouse(pos, reversed_=self.revesed_board)
 
         if self.promotion_moves and sq_idx in self.promotion_choices:
             # if user clicked on the available promotion options

@@ -32,9 +32,7 @@ class Game:
         self.board.parse_fen(START_FEN)  # mate in two '3k4/8/8/3K4/8/8/1Q6/8 w --'
         self.move_history = []
         # --- Engine process
-        channel = grpc.insecure_channel('localhost:50051')
-        self.stub = protos.adapter_pb2_grpc.AdapterStub(channel)
-        self.init_engine_uci()
+        self.stub = None
         self.engine_info = None
         self.movetime = '1500'  # default engine move time in ms
         # --
@@ -103,13 +101,22 @@ class Game:
 
         self.engine_info = engine_info
 
+    def connect_to_engine(self, port):
+        # --- Connect to engine process
+        channel = grpc.insecure_channel(f'localhost:{port}')
+        self.stub = protos.adapter_pb2_grpc.AdapterStub(channel)
+        self.init_engine_uci()
+        self.engine_info = None
+        # --
+
     def init_engine_uci(self):
         message = protos.adapter_pb2.Request(text="uci\n", timeout=1)  # todo move engine command definitions to their own class
         call_future = self.stub.ExecuteEngineCommand.future(message)
         call_future.add_done_callback(self.parse_engine_info)
 
-    def play_game(self, settings):
+    def play_game(self, engine_options, settings):
         self.reset_board()
+        self.connect_to_engine(port=engine_options["engine_port"])
 
         if settings:
             fen = settings['fen_text']
@@ -131,7 +138,6 @@ class Game:
             _, engine_side = ENGINE_SIDE_SETTINGS[side_idx]
             self.user_side = engine_side ^ 1  # the user side is the opposite of the engine
 
-            print(self.user_side)
             if self.user_side == BLACK:
                 self.revesed_board = True  # show board from user perspective
                 self.square_loc = self.helpers.compute_square_locations(self.revesed_board)
@@ -371,18 +377,19 @@ class Game:
         side_highlight.fill(color=highlight_colour)
         self.canvas.blit(side_highlight, highlight_location)
 
-        # add player names
-        x_padding = y_padding = 10
-        white_location = (x_padding, banner_y + y_padding)
-        black_location = (self.screen_width // 2 + separator_thickness // 2 + x_padding, banner_y + y_padding)
-        white_name = self.user_name if self.user_side == WHITE else self.engine_info['name']
-        black_name = self.user_name if self.user_side == BLACK else self.engine_info['name']
+        if self.engine_info:  # give some time for engine to load before displaying names
+            # add player names
+            x_padding = y_padding = 10
+            white_location = (x_padding, banner_y + y_padding)
+            black_location = (self.screen_width // 2 + separator_thickness // 2 + x_padding, banner_y + y_padding)
+            white_name = self.user_name if self.user_side == WHITE else self.engine_info['name']
+            black_name = self.user_name if self.user_side == BLACK else self.engine_info['name']
 
-        self.helpers.display_text(text=white_name, font_type="sans", font_size=30, canvas=self.canvas,
-                                  location=white_location, bold=True, color='white')
+            self.helpers.display_text(text=white_name, font_type="sans", font_size=30, canvas=self.canvas,
+                                      location=white_location, bold=True, color='white')
 
-        self.helpers.display_text(text=black_name, font_type="sans", font_size=30, canvas=self.canvas,
-                                  location=black_location, bold=True, color='black')
+            self.helpers.display_text(text=black_name, font_type="sans", font_size=30, canvas=self.canvas,
+                                      location=black_location, bold=True, color='black')
 
     def draw_squares(self):
         for i in range(BOARD_SIZE):

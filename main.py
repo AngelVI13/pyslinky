@@ -1,4 +1,7 @@
 import logging
+import os
+import signal
+import subprocess
 
 import pygame
 import pygameMenu
@@ -65,6 +68,7 @@ class MainMenu:
                                         ENGINE_SIDE_SETTINGS,
                                         selector_id='engine_side',
                                         default=1)
+        self.settings_menu.add_text_input('Engine port: ', default='50051', textinput_id='engine_port')
 
         self.settings_menu.add_option('Store data', self.data_fun)  # Call function
         self.settings_menu.add_option('Return to main menu', pygameMenu.events.BACK,
@@ -77,7 +81,14 @@ class MainMenu:
         self.main_menu.set_fps(fps=MENU_FPS)
 
     def start_game(self):
-        self.game.play_game(settings=self.data)
+        engine_options = {}
+
+        if "engine_port" not in self.data:
+            engine_options["engine_port"] = '50051'  # todo add var as default path
+        else:
+            engine_options["engine_port"] = self.data["engine_port"]
+
+        self.game.play_game(engine_options=engine_options, settings=self.data)
 
     def menu_background(self):
         self.canvas.fill(pygame.Color('black'))
